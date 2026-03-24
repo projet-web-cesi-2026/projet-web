@@ -1,0 +1,104 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Étudiants - Espace pilote{% endblock %}
+
+{% block stylesheets %}
+    <link rel="stylesheet" href="/assets/css/pilot-dashboard.css">
+{% endblock %}
+
+{% block body %}
+<main class="pilot-page">
+    <div class="pilot-container">
+        <div class="activity-section">
+            <div class="activity-header">
+                <h2>Liste des étudiants</h2>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <a href="/pilot-etudiant-create" class="student-button">Créer un étudiant</a>
+
+                    {% if current_user.role == 'administrateur' %}
+                        <a href="/espace-admin">Retour au dashboard</a>
+                    {% else %}
+                        <a href="/espace-pilote">Retour au dashboard</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            <form method="GET" action="/pilot-etudiants" class="apply-form" style="margin-bottom: 18px;">
+                <label for="q">Rechercher un étudiant</label>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom: 14px;">
+                    <input
+                        id="q"
+                        name="q"
+                        type="text"
+                        value="{{ search }}"
+                        placeholder="Nom, prénom ou email"
+                    >
+                </div>
+
+                <label for="promotion_id">Filtrer par promotion</label>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <select id="promotion_id" name="promotion_id">
+                        <option value="">Toutes les promotions</option>
+                        {% for promotion in promotions %}
+                            <option value="{{ promotion.id }}" {% if selected_promotion_id == promotion.id %}selected{% endif %}>
+                                {{ promotion.label }}
+                            </option>
+                        {% endfor %}
+                    </select>
+
+                    <button type="submit" class="student-button">Filtrer</button>
+                    <a href="/pilot-etudiants" class="student-button">Réinitialiser</a>
+                </div>
+            </form>
+
+            <div class="student-list">
+                {% for student in students %}
+                    <article class="student-row">
+                        <div class="student-main">
+                            <h3>{{ student.prenom }} {{ student.nom }}</h3>
+
+                            <p>
+                                {% if student.promotion_label and student.formation and student.promotion_label != student.formation %}
+                                    {{ student.promotion_label }} • {{ student.formation }} • {{ student.email }}
+                                {% elseif student.promotion_label %}
+                                    {{ student.promotion_label }} • {{ student.email }}
+                                {% elseif student.formation %}
+                                    {{ student.formation }} • {{ student.email }}
+                                {% else %}
+                                    Promotion non définie • {{ student.email }}
+                                {% endif %}
+                            </p>
+
+                            <div class="student-meta">
+                                {% if student.status == 'sans_stage' %}
+                                    <span class="badge badge-red">Sans stage</span>
+                                {% elseif student.status == 'en_recherche' %}
+                                    <span class="badge badge-yellow">En recherche</span>
+                                {% elseif student.status == 'stage_trouve' %}
+                                    <span class="badge badge-blue">Stage trouvé</span>
+                                {% elseif student.status == 'stage_valide' %}
+                                    <span class="badge badge-green">Stage validé</span>
+                                {% endif %}
+
+                                <small>Dernière activité : {{ student.last_activity|date('d/m/Y') }}</small>
+                            </div>
+                        </div>
+
+                        <div class="student-actions student-actions-vertical">
+                            <a href="/pilot-etudiants/{{ student.id }}" class="student-button">Voir le dossier</a>
+                            <a href="/pilot-etudiants/{{ student.id }}/editer" class="student-button">Modifier le profil</a>
+
+                            <form method="POST" action="/pilot-etudiants/{{ student.id }}/supprimer" onsubmit="return confirm('Confirmer la suppression ?');">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="student-button">Supprimer</button>
+                            </form>
+                        </div>
+                    </article>
+                {% else %}
+                    <p class="empty-state">Aucun étudiant trouvé.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</main>
+{% endblock %}

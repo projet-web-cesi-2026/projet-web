@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{% block title %}Help Me Stage{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="stylesheet" href="/assets/css/base.css">
+    {% block stylesheets %}{% endblock %}
+</head>
+
+<body>
+
+<header class="site-header">
+    <div class="container header-content">
+        <div class="logo">
+            <a href="/" class="logo-link">Help Me Stage</a>
+        </div>
+
+        <div class="header-right">
+            {% if current_user %}
+                <span class="connected-user">
+                    {{ current_user.email }}
+                </span>
+            {% endif %}
+
+            <button
+                class="menu-button"
+                aria-label="Ouvrir le menu"
+                aria-expanded="false"
+                aria-controls="mobile-menu"
+                id="menu-toggle"
+                type="button"
+            >
+                ☰
+            </button>
+        </div>
+    </div>
+
+    <nav class="mobile-menu" id="mobile-menu">
+        {% if current_user %}
+            <a href="#">{{ current_user.email }}</a>
+
+            {% if current_user.role == 'administrateur' %}
+                <a href="/espace-admin">Mon espace administrateur</a>
+                <a href="/admin-entreprises">Gestion des entreprises</a>
+                <a href="/admin-pilotes">Gestion des pilotes</a>
+                <a href="/pilot-etudiants">Gestion des étudiants</a>
+                <a href="/pilot-offres">Gestion des offres</a>
+                <a href="/pilot-candidatures">Gestion des candidatures</a>
+            {% elseif current_user.role == 'pilote' %}
+                <a href="/espace-pilote">Mon espace pilote</a>
+                <a href="/pilot-etudiants">Étudiants</a>
+                <a href="/pilot-candidatures">Candidatures</a>
+                <a href="/pilot-offres">Offres</a>
+            {% elseif current_user.role == 'etudiant' %}
+                <a href="/espace-etudiant">Mon espace étudiant</a>
+                <a href="/etudiant-candidatures">Mes candidatures</a>
+                <a href="/etudiant-wishlist">Ma wishlist</a>
+            {% endif %}
+            
+            <a href="/offres">Voir les offres</a>
+            <a href="/logout">Déconnexion</a>
+        {% else %}
+            <a href="/#comment-ca-marche">Comment ça marche ?</a>
+            <a href="/offres">Voir les offres</a>
+            <a href="/connexion">Connexion</a>
+            <a href="/#contact">Contact</a>
+        {% endif %}
+    </nav>
+</header>
+
+{% block body %}{% endblock %}
+
+<footer class="site-footer" id="contact">
+    <div class="container footer-content">
+        <h2>Help Me Stage</h2>
+        <p>Ta plateforme de recherche de stage</p>
+
+        <div class="footer-links">
+            <a href="/mentions-legales">Mentions légales</a>
+            <a href="/contact">Contact</a>
+            <a href="/politique-confidentialite">Politique de confidentialité</a>
+        </div>
+
+        <p class="footer-copy">© 2026 Help Me Stage. Tous droits réservés.</p>
+    </div>
+</footer>
+
+{% if show_cookie_banner %}
+<div class="cookie-banner">
+    <div class="cookie-banner-content">
+        <div class="cookie-banner-text">
+            <h3>Gestion des cookies</h3>
+            <p>
+                Nous utilisons des cookies essentiels pour le fonctionnement du site, ainsi que des cookies optionnels
+                pour améliorer l’expérience utilisateur. Vous pouvez accepter, refuser ou personnaliser votre choix.
+            </p>
+        </div>
+
+        <form method="POST" action="/cookies/consent" class="cookie-banner-form">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+
+            <div class="cookie-options">
+                <label class="cookie-option cookie-option-disabled">
+                    <input type="checkbox" checked disabled>
+                    <span>Cookies essentiels (obligatoires)</span>
+                </label>
+
+                <label class="cookie-option">
+                    <input type="checkbox" name="analytics">
+                    <span>Cookies de mesure d’audience</span>
+                </label>
+
+                <label class="cookie-option">
+                    <input type="checkbox" name="marketing">
+                    <span>Cookies marketing</span>
+                </label>
+            </div>
+
+            <div class="cookie-actions">
+                <button type="submit" name="cookie_action" value="reject_all" class="secondary-button">
+                    Tout refuser
+                </button>
+
+                <button type="submit" name="cookie_action" value="save_preferences" class="secondary-button">
+                    Enregistrer mes choix
+                </button>
+
+                <button type="submit" name="cookie_action" value="accept_all" class="cta-button">
+                    Tout accepter
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const button = document.getElementById('menu-toggle');
+    const menu = document.getElementById('mobile-menu');
+
+    if (button && menu) {
+        button.addEventListener('click', function () {
+            menu.classList.toggle('is-open');
+
+            const expanded = button.getAttribute('aria-expanded') === 'true';
+            button.setAttribute('aria-expanded', String(!expanded));
+        });
+    }
+});
+</script>
+
+</body>
+</html>

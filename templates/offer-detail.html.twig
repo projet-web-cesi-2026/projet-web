@@ -1,0 +1,123 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ offer.titre }} - Help Me Stage{% endblock %}
+
+{% block stylesheets %}
+    <link rel="stylesheet" href="/assets/css/offer-detail.css">
+{% endblock %}
+
+{% block body %}
+<main class="offer-detail-page">
+    <div class="container">
+        <nav class="breadcrumb">
+            <a href="/">Accueil</a>
+            <span>/</span>
+            <a href="/offres">Offres</a>
+            <span>/</span>
+            <span>{{ offer.titre }}</span>
+        </nav>
+
+        <section class="offer-detail-card">
+            <h1>{{ offer.titre }}</h1>
+
+            <p class="detail-company">{{ offer.entreprise_nom ?: 'Entreprise non définie' }}</p>
+
+            <div class="detail-info-grid">
+                <div class="detail-info-item">
+                    <span class="detail-label">Rémunération</span>
+                    <strong>{{ offer.remuneration }} € / mois</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Lieu</span>
+                    <strong>{{ offer.lieu ?: 'Non défini' }}</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Durée</span>
+                    <strong>{{ offer.duree_semaines }} semaines</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Publication</span>
+                    <strong>{{ offer.created_at|date('d/m/Y') }}</strong>
+                </div>
+            </div>
+
+            <h2>Description de l'offre</h2>
+            <p class="detail-description">{{ offer.description }}</p>
+
+            <h2>Entreprise</h2>
+            <div class="detail-info-grid">
+                <div class="detail-info-item">
+                    <span class="detail-label">Nom</span>
+                    <strong>{{ offer.entreprise_nom ?: 'Non défini' }}</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Secteur</span>
+                    <strong>{{ offer.entreprise_secteur ?: 'Non défini' }}</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Ville</span>
+                    <strong>{{ offer.entreprise_ville ?: 'Non définie' }}</strong>
+                </div>
+
+                <div class="detail-info-item">
+                    <span class="detail-label">Note</span>
+                    <strong>
+                        {% if offer.entreprise_note is not null %}
+                            {{ offer.entreprise_note }}/5
+                        {% else %}
+                            Non évaluée
+                        {% endif %}
+                    </strong>
+                </div>
+            </div>
+
+            {% if offer.entreprise_site_web %}
+                <p>
+                    <strong>Site web :</strong>
+                    <a href="{{ offer.entreprise_site_web }}" target="_blank" rel="noopener noreferrer">
+                        {{ offer.entreprise_site_web }}
+                    </a>
+                </p>
+            {% endif %}
+
+            {% if offer.entreprise_commentaire %}
+                <p><strong>Commentaire :</strong> {{ offer.entreprise_commentaire }}</p>
+            {% endif %}
+
+            {% if current_user and current_user.role == 'etudiant' %}
+                <div class="detail-actions">
+                    {% if is_in_wishlist %}
+                        <form method="POST" action="/offres/{{ offer.id }}/wishlist/supprimer">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="secondary-button">Retirer de ma wishlist</button>
+                        </form>
+                    {% else %}
+                        <form method="POST" action="/offres/{{ offer.id }}/wishlist/ajouter">
+                            <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="secondary-button">Ajouter à ma wishlist</button>
+                        </form>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <div class="detail-actions">
+                {% if current_user is null %}
+                    <a href="/connexion" class="apply-button">Se connecter pour postuler</a>
+                    <p class="detail-note">Connexion requise pour postuler à cette offre</p>
+                {% elseif current_user.role != 'etudiant' %}
+                    <button class="apply-button disabled-button" disabled>Postuler</button>
+                    <p class="detail-note">Seuls les étudiants peuvent postuler à cette offre</p>
+                {% else %}
+                    <a href="/offres/{{ offer.id }}/postuler" class="apply-button">Postuler</a>
+                    <p class="detail-note">Votre candidature sera ajoutée à votre espace étudiant</p>
+                {% endif %}
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}
