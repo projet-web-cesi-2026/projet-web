@@ -2,11 +2,6 @@
 
 declare(strict_types=1);
 
-require_once __DIR__ . '/../vendor/autoload.php';
-
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
-$dotenv->load();
-
 use Twig\Environment;
 use Twig\Loader\FilesystemLoader;
 
@@ -42,6 +37,11 @@ use App\Controller\AdminCompanyFormController;
 use App\Controller\AdminCompanyDeleteController;
 use App\Controller\PilotOfferFormController;
 use App\Controller\PilotOfferDeleteController;
+
+require_once __DIR__ . '/../vendor/autoload.php';
+
+$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/../');
+$dotenv->load();
 
 $https = (
     (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
@@ -241,6 +241,7 @@ if ($method === 'POST' && preg_match('#^/pilot-offres/([0-9]+)/supprimer$#', $ur
 | Routes statiques
 |--------------------------------------------------------------------------
 */
+
 switch ($uri) {
     case '/':
         echo (new HomeController($twig))->index();
