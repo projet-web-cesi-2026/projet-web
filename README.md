@@ -1,6 +1,6 @@
-# help_me_stage — Setup Guide
+# help_me_stage — Guide d'installation
 
-## Prerequisites
+## Prérequis
 
 ### Arch Linux / EndeavourOS
 ```bash
@@ -14,98 +14,98 @@ sudo apt install php php-mysql libapache2-mod-php mariadb-server composer
 
 ---
 
-## 1. Clone the repository
+## 1. Cloner le dépôt
 ```bash
-git clone <repo-url>
+git clone https://github.com/paulmsg/projet-web.git
 cd projet-web
 ```
 
 ---
 
-## 2. Install PHP dependencies
+## 2. Installer les dépendances PHP
 ```bash
 composer install
 ```
 
 ---
 
-## 3. Enable PDO MySQL driver
+## 3. Activer le driver PDO MySQL
 
-### Arch Linux only
-The driver exists but is disabled by default:
+### Arch Linux uniquement
+Le driver existe mais est désactivé par défaut :
 ```bash
 sudo nano /etc/php/php.ini
 ```
-Find and uncomment these two lines (remove the `;`):
+Trouver et décommenter ces deux lignes (retirer le `;`) :
 ```ini
 extension=pdo_mysql
 extension=pdo
 ```
 
 ### Ubuntu / WSL
-Already enabled after `apt install php-mysql`. Nothing to do.
+Déjà activé après `apt install php-mysql`. Rien à faire.
 
 ---
 
-## 4. Set up environment variables
+## 4. Configurer les variables d'environnement
 ```bash
 cp .env.example .env
 nano .env
 ```
-Fill in your credentials:
+Remplir avec vos identifiants :
 ```env
 DB_HOST=localhost
 DB_PORT=3306
-DB_NAME=help_me_stage
-DB_USER=root
-DB_PASS=yourpassword
+DB_NAME=nom_de_la_BDD
+DB_USER=ton_user_mysql
+DB_PASS=ton_mdp_mysql
 ```
 
 ---
 
-## 5. Set up the database
+## 5. Créer et importer la base de données
 
 ### Arch Linux
 ```bash
-# start MariaDB if not running
+# démarrer MariaDB si ce n'est pas déjà fait
 sudo systemctl start mysqld
 
-# create the database
+# créer la base de données
 mariadb -u root -p -e "CREATE DATABASE help_me_stage;"
 
-# import the schema
+# importer le schéma
 mariadb -u root -p help_me_stage < help_me_stage.sql
 ```
 
 ### Ubuntu / WSL
 ```bash
-# start MySQL if not running
+# démarrer MySQL si ce n'est pas déjà fait
 sudo systemctl start mysql
 
-# create the database
+# créer la base de données
 mysql -u root -p -e "CREATE DATABASE help_me_stage;"
 
-# import the schema
+# importer le schéma
 mysql -u root -p help_me_stage < help_me_stage.sql
 ```
 
-> Note: on Arch, `mysql` is deprecated — always use `mariadb` instead.
+> Note : sur Arch, `mysql` est déprécié — toujours utiliser `mariadb` à la place.
 
 ---
 
-## 6. Run the development server
+## 6. Lancer le serveur de développement
 ```bash
 php -S localhost:8000 -t public
 ```
-Then open `http://localhost:8000` in your browser.
+Puis ouvrir `http://localhost:8000` dans votre navigateur.
 
 ---
 
-## Troubleshooting
+## Résolution des problèmes courants
 
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `could not find driver` | pdo_mysql not enabled | See step 3 |
-| `Access denied for user` | wrong credentials in `.env` | Check step 4 |
-| `Erreur : variables .env manquantes` | `.env` file missing | See step 4 |
-| blank page / 500 error | missing composer dependencies | Run `composer install` |
+| Erreur | Cause | Solution |
+|--------|-------|----------|
+| `could not find driver` | pdo_mysql non activé | Voir étape 3 |
+| `Access denied for user` | mauvais identifiants dans `.env` | Vérifier étape 4 |
+| `Erreur : variables .env manquantes` | fichier `.env` absent | Voir étape 4 |
+| page blanche / erreur 500 | dépendances Composer manquantes | Lancer `composer install` |
