@@ -6,10 +6,12 @@ namespace App\Controller;
 
 use App\Database;
 use Twig\Environment;
+use PDO;
 
 class PilotApplicationsController
 {
     private Environment $twig;
+    private const PER_PAGE = 10;
 
     public function __construct(Environment $twig)
     {
@@ -28,7 +30,67 @@ class PilotApplicationsController
 
         $pdo = Database::getConnection();
 
-        $stmt = $pdo->query("
+        $selectedPromotionId = isset($_GET['promotion_id']) && ctype_digit((string) $_GET['promotion_id'])
+            ? (int) $_GET['promotion_id']
+            : null;
+
+        $search = trim((string) ($_GET['q'] ?? ''));
+
+        $currentPage = isset($_GET['page']) && ctype_digit((string) $_GET['page']) && (int) $_GET['page'] > 0
+            ? (int) $_GET['page']
+            : 1;
+
+        $promotionsStmt = $pdo->query("
+            SELECT id, label
+            FROM promotions
+            WHERE is_active = 1
+            ORDER BY label ASC
+        ");
+        $promotions = $promotionsStmt->fetchAll();
+
+        $countSql = "
+            SELECT COUNT(*)
+            FROM candidatures c
+            INNER JOIN users u ON u.id = c.student_user_id
+            INNER JOIN offres o ON o.id = c.offre_id
+            LEFT JOIN student_profiles sp ON sp.user_id = u.id
+            LEFT JOIN promotions p ON p.id = sp.promotion_id
+            WHERE 1 = 1
+        ";
+
+        $countParams = [];
+
+        if ($selectedPromotionId !== null) {
+            $countSql .= " AND sp.promotion_id = :promotion_id ";
+            $countParams['promotion_id'] = $selectedPromotionId;
+        }
+
+        if ($search !== '') {
+            $countSql .= "
+                AND (
+                    u.nom LIKE :search
+                    OR u.prenom LIKE :search
+                    OR u.email LIKE :search
+                    OR CONCAT(u.prenom, ' ', u.nom) LIKE :search
+                    OR CONCAT(u.nom, ' ', u.prenom) LIKE :search
+                )
+            ";
+            $countParams['search'] = '%' . $search . '%';
+        }
+
+        $countStmt = $pdo->prepare($countSql);
+        $countStmt->execute($countParams);
+        $totalApplications = (int) $countStmt->fetchColumn();
+
+        $totalPages = max(1, (int) ceil($totalApplications / self::PER_PAGE));
+
+        if ($currentPage > $totalPages) {
+            $currentPage = $totalPages;
+        }
+
+        $offset = ($currentPage - 1) * self::PER_PAGE;
+
+        $sql = "
             SELECT
                 c.id,
                 c.status,
@@ -36,10 +98,37 @@ class PilotApplicationsController
                 u.nom,
                 u.prenom,
                 u.email,
-                o.titre
+                o.titre,
+                p.label AS promotion_label
             FROM candidatures c
             INNER JOIN users u ON u.id = c.student_user_id
             INNER JOIN offres o ON o.id = c.offre_id
+            LEFT JOIN student_profiles sp ON sp.user_id = u.id
+            LEFT JOIN promotions p ON p.id = sp.promotion_id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if ($selectedPromotionId !== null) {
+            $sql .= " AND sp.promotion_id = :promotion_id ";
+            $params['promotion_id'] = $selectedPromotionId;
+        }
+
+        if ($search !== '') {
+            $sql .= "
+                AND (
+                    u.nom LIKE :search
+                    OR u.prenom LIKE :search
+                    OR u.email LIKE :search
+                    OR CONCAT(u.prenom, ' ', u.nom) LIKE :search
+                    OR CONCAT(u.nom, ' ', u.prenom) LIKE :search
+                )
+            ";
+            $params['search'] = '%' . $search . '%';
+        }
+
+        $sql .= "
             ORDER BY
                 CASE
                     WHEN c.status = 'en_etude' THEN 1
@@ -49,12 +138,33 @@ class PilotApplicationsController
                     ELSE 5
                 END,
                 c.created_at DESC
-        ");
+            LIMIT :limit OFFSET :offset
+        ";
 
+        $stmt = $pdo->prepare($sql);
+
+        if ($selectedPromotionId !== null) {
+            $stmt->bindValue(':promotion_id', $selectedPromotionId, PDO::PARAM_INT);
+        }
+
+        if ($search !== '') {
+            $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
+        }
+
+        $stmt->bindValue(':limit', self::PER_PAGE, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+        $stmt->execute();
         $applications = $stmt->fetchAll();
 
         return $this->twig->render('pilot-applications.html.twig', [
             'applications' => $applications,
+            'promotions' => $promotions,
+            'selected_promotion_id' => $selectedPromotionId,
+            'search' => $search,
+            'currentPage' => $currentPage,
+            'totalPages' => $totalPages,
+            'totalApplications' => $totalApplications,
         ]);
     }
 }

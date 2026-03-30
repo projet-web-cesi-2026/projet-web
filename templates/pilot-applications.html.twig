@@ -15,6 +15,49 @@
                 <a href="/espace-pilote">Retour au dashboard</a>
             </div>
 
+            <form method="GET" action="/pilot-candidatures" style="margin-bottom: 24px;">
+                <div style="display:flex; flex-direction:column; gap:18px; max-width:780px;">
+
+                    <div>
+                        <label for="q" style="display:block; margin-bottom:8px;">Rechercher un étudiant</label>
+                        <input
+                            id="q"
+                            name="q"
+                            type="text"
+                            value="{{ search }}"
+                            placeholder="Nom, prénom ou email"
+                            style="max-width:420px;"
+                        >
+                    </div>
+
+                    <div>
+                        <label for="promotion_id" style="display:block; margin-bottom:8px;">Filtrer par promotion</label>
+
+                        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                            <select id="promotion_id" name="promotion_id" style="min-width:260px;">
+                                <option value="">Toutes les promotions</option>
+                                {% for promotion in promotions %}
+                                    <option value="{{ promotion.id }}"
+                                        {% if selected_promotion_id == promotion.id %}selected{% endif %}>
+                                        {{ promotion.label }}
+                                    </option>
+                                {% endfor %}
+                            </select>
+
+                            <button type="submit" class="student-button">Filtrer</button>
+                            <a href="/pilot-candidatures" class="student-button">Réinitialiser</a>
+                        </div>
+                    </div>
+                </div>
+            </form>
+
+            {% if totalApplications > 0 %}
+                <p style="margin-bottom: 15px;">
+                    {{ totalApplications }} candidature{{ totalApplications > 1 ? 's' : '' }}
+                    — page {{ currentPage }} sur {{ totalPages }}
+                </p>
+            {% endif %}
+
             <div class="student-list">
                 {% for application in applications %}
                     <article class="student-row">
@@ -24,7 +67,13 @@
                                 {{ application.prenom }} {{ application.nom }}
                                 • {{ application.email }}
                             </p>
-                            <small>Déposée le {{ application.created_at|date('d/m/Y') }}</small>
+
+                            <small>
+                                Déposée le {{ application.created_at|date('d/m/Y') }}
+                                {% if application.promotion_label %}
+                                    • Promotion : {{ application.promotion_label }}
+                                {% endif %}
+                            </small>
                         </div>
 
                         <div class="student-actions student-actions-vertical">
@@ -60,6 +109,34 @@
                     <p class="empty-state">Aucune candidature trouvée.</p>
                 {% endfor %}
             </div>
+
+            {% if totalPages > 1 %}
+                <nav style="margin-top: 25px; display: flex; justify-content: center; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    {% if currentPage > 1 %}
+                        <a href="/pilot-candidatures?page={{ currentPage - 1 }}{% if search %}&q={{ search|url_encode }}{% endif %}{% if selected_promotion_id %}&promotion_id={{ selected_promotion_id }}{% endif %}" class="student-button">
+                            Précédent
+                        </a>
+                    {% endif %}
+
+                    {% for pageNumber in 1..totalPages %}
+                        {% if pageNumber == currentPage %}
+                            <span class="student-button" style="pointer-events: none; opacity: 0.7;">
+                                {{ pageNumber }}
+                            </span>
+                        {% else %}
+                            <a href="/pilot-candidatures?page={{ pageNumber }}{% if search %}&q={{ search|url_encode }}{% endif %}{% if selected_promotion_id %}&promotion_id={{ selected_promotion_id }}{% endif %}" class="student-button">
+                                {{ pageNumber }}
+                            </a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if currentPage < totalPages %}
+                        <a href="/pilot-candidatures?page={{ currentPage + 1 }}{% if search %}&q={{ search|url_encode }}{% endif %}{% if selected_promotion_id %}&promotion_id={{ selected_promotion_id }}{% endif %}" class="student-button">
+                            Suivant
+                        </a>
+                    {% endif %}
+                </nav>
+            {% endif %}
         </section>
     </div>
 </main>
