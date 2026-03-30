@@ -24,18 +24,20 @@ class AdminPilotsController
         }
 
         $pdo = Database::getConnection();
-
         $search = trim((string) ($_GET['q'] ?? ''));
 
         $sql = "
             SELECT
-                id,
-                nom,
-                prenom,
-                email,
-                created_at
-            FROM users
-            WHERE role = 'pilote'
+                u.id,
+                u.nom,
+                u.prenom,
+                u.email,
+                u.created_at,
+                COALESCE(GROUP_CONCAT(DISTINCT p.label ORDER BY p.label SEPARATOR ', '), '') AS promotions_labels
+            FROM users u
+            LEFT JOIN pilot_promotions pp ON pp.pilot_user_id = u.id
+            LEFT JOIN promotions p ON p.id = pp.promotion_id
+            WHERE u.role = 'pilote'
         ";
 
         $params = [];
@@ -43,17 +45,20 @@ class AdminPilotsController
         if ($search !== '') {
             $sql .= "
                 AND (
-                    nom LIKE :search
-                    OR prenom LIKE :search
-                    OR email LIKE :search
-                    OR CONCAT(prenom, ' ', nom) LIKE :search
-                    OR CONCAT(nom, ' ', prenom) LIKE :search
+                    u.nom LIKE :search
+                    OR u.prenom LIKE :search
+                    OR u.email LIKE :search
+                    OR CONCAT(u.prenom, ' ', u.nom) LIKE :search
+                    OR CONCAT(u.nom, ' ', u.prenom) LIKE :search
                 )
             ";
             $params['search'] = '%' . $search . '%';
         }
 
-        $sql .= " ORDER BY nom ASC, prenom ASC ";
+        $sql .= "
+            GROUP BY u.id, u.nom, u.prenom, u.email, u.created_at
+            ORDER BY u.nom ASC, u.prenom ASC
+        ";
 
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);

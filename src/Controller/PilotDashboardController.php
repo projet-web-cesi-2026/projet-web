@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Support\PilotPromotionAccess;
 use Twig\Environment;
 
 class PilotDashboardController
@@ -24,30 +25,53 @@ class PilotDashboardController
         }
 
         $pdo = Database::getConnection();
+        $pilotId = (int) ($_SESSION['user']['id'] ?? 0);
+        $allowedPromotionIds = PilotPromotionAccess::getAssignedPromotionIds($pdo, $pilotId);
 
-        $studentsWithoutStage = (int) $pdo->query("
+        $promotionFilterSql = ' AND 1 = 0 ';
+        $promotionParams = [];
+
+        if ($allowedPromotionIds !== []) {
+            $placeholders = [];
+            foreach ($allowedPromotionIds as $index => $promotionId) {
+                $key = ':promotion_' . $index;
+                $placeholders[] = $key;
+                $promotionParams['promotion_' . $index] = $promotionId;
+            }
+            $promotionFilterSql = ' AND sp.promotion_id IN (' . implode(', ', $placeholders) . ') ';
+        }
+
+        $studentsWithoutStageStmt = $pdo->prepare("
             SELECT COUNT(*)
-            FROM student_profiles
-            WHERE status = 'sans_stage'
-        ")->fetchColumn();
+            FROM student_profiles sp
+            WHERE sp.status = 'sans_stage'
+            $promotionFilterSql
+        ");
+        $studentsWithoutStageStmt->execute($promotionParams);
+        $studentsWithoutStage = (int) $studentsWithoutStageStmt->fetchColumn();
 
-        $offersCount = (int) $pdo->query("
+        $offersCount = (int) $pdo->query("SELECT COUNT(*) FROM offres")->fetchColumn();
+
+        $applicationsCountStmt = $pdo->prepare("
             SELECT COUNT(*)
-            FROM offres
-        ")->fetchColumn();
+            FROM candidatures c
+            INNER JOIN student_profiles sp ON sp.user_id = c.student_user_id
+            WHERE 1 = 1
+            $promotionFilterSql
+        ");
+        $applicationsCountStmt->execute($promotionParams);
+        $applicationsCount = (int) $applicationsCountStmt->fetchColumn();
 
-        $applicationsCount = (int) $pdo->query("
+        $validatedStagesStmt = $pdo->prepare("
             SELECT COUNT(*)
-            FROM candidatures
-        ")->fetchColumn();
+            FROM student_profiles sp
+            WHERE sp.status = 'stage_valide'
+            $promotionFilterSql
+        ");
+        $validatedStagesStmt->execute($promotionParams);
+        $validatedStages = (int) $validatedStagesStmt->fetchColumn();
 
-        $validatedStages = (int) $pdo->query("
-            SELECT COUNT(*)
-            FROM student_profiles
-            WHERE status = 'stage_valide'
-        ")->fetchColumn();
-
-        $recentStudentsStmt = $pdo->query("
+        $recentStudentsStmt = $pdo->prepare("
             SELECT
                 u.id,
                 u.nom,
@@ -61,9 +85,11 @@ class PilotDashboardController
             INNER JOIN student_profiles sp ON sp.user_id = u.id
             LEFT JOIN promotions p ON p.id = sp.promotion_id
             WHERE u.role = 'etudiant'
+            $promotionFilterSql
             ORDER BY sp.last_activity DESC, u.id DESC
             LIMIT 5
         ");
+        $recentStudentsStmt->execute($promotionParams);
         $recentStudents = $recentStudentsStmt->fetchAll();
 
         return $this->twig->render('pilot-dashboard.html.twig', [

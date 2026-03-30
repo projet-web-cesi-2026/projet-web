@@ -52,6 +52,29 @@
                 <label for="email">Email *</label>
                 <input id="email" type="email" name="email" value="{{ pilot.email }}" required maxlength="255">
 
+                <fieldset style="border:1px solid #d6d3d1; border-radius:12px; padding:16px; margin:16px 0;">
+                    <legend style="padding:0 8px; font-weight:700;">Promotions rattachées *</legend>
+                    <p style="margin:0 0 12px 0; color:#57534e;">
+                        Coche une ou plusieurs promotions pour ce pilote.
+                    </p>
+
+                    <div style="display:grid; gap:10px;">
+                        {% for promotion in promotions %}
+                            <label style="display:flex; align-items:center; gap:10px; margin:0; font-weight:500;">
+                                <input
+                                    type="checkbox"
+                                    name="promotion_ids[]"
+                                    value="{{ promotion.id }}"
+                                    {% if promotion.id in pilot.promotion_ids %}checked{% endif %}
+                                >
+                                <span>{{ promotion.label }}</span>
+                            </label>
+                        {% else %}
+                            <p class="empty-state">Aucune promotion active disponible.</p>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+
                 {% if not is_edit %}
                     <label for="password">Mot de passe initial *</label>
                     <input id="password" type="password" name="password" required minlength="8">

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Support\PilotPromotionAccess;
 use Twig\Environment;
 
 class PilotStudentDetailController
@@ -27,6 +28,15 @@ class PilotStudentDetailController
         }
 
         $pdo = Database::getConnection();
+        $currentUserRole = $_SESSION['user']['role'] ?? null;
+
+        if ($currentUserRole === 'pilote') {
+            $pilotId = (int) ($_SESSION['user']['id'] ?? 0);
+            if (!PilotPromotionAccess::pilotCanAccessStudent($pdo, $pilotId, $studentId)) {
+                http_response_code(403);
+                return 'Accès refusé à cet étudiant.';
+            }
+        }
 
         $stmt = $pdo->prepare("
             SELECT
@@ -70,61 +80,14 @@ class PilotStudentDetailController
             INNER JOIN offres o ON o.id = c.offre_id
             LEFT JOIN entreprises e ON e.id = o.entreprise_id
             WHERE c.student_user_id = :id
-            ORDER BY
-                CASE
-                    WHEN c.status = 'acceptee' THEN 1
-                    WHEN c.status = 'en_etude' THEN 2
-                    WHEN c.status = 'envoyee' THEN 3
-                    WHEN c.status = 'refusee' THEN 4
-                    ELSE 5
-                END,
-                c.created_at DESC
+            ORDER BY c.created_at DESC
         ");
         $stmt->execute(['id' => $studentId]);
         $applications = $stmt->fetchAll();
 
-        $stmt = $pdo->prepare("
-            SELECT
-                o.id,
-                o.titre,
-                o.lieu,
-                sw.created_at,
-                COALESCE(e.nom, o.entreprise) AS entreprise_nom
-            FROM student_wishlist sw
-            INNER JOIN offres o ON o.id = sw.offre_id
-            LEFT JOIN entreprises e ON e.id = o.entreprise_id
-            WHERE sw.user_id = :id
-            ORDER BY sw.created_at DESC
-        ");
-        $stmt->execute(['id' => $studentId]);
-        $wishlist = $stmt->fetchAll();
-
-        $acceptedOffer = null;
-        $inProgressOffers = [];
-        $sentOffers = [];
-
-        foreach ($applications as $application) {
-            if ($application['status'] === 'acceptee' && $acceptedOffer === null) {
-                $acceptedOffer = $application;
-            } elseif ($application['status'] === 'en_etude') {
-                $inProgressOffers[] = $application;
-            } elseif ($application['status'] === 'envoyee') {
-                $sentOffers[] = $application;
-            }
-        }
-
-        $hasFoundStage = $acceptedOffer !== null;
-        $hasInProgressStage = count($inProgressOffers) > 0;
-
         return $this->twig->render('pilot-student-detail.html.twig', [
             'student' => $student,
             'applications' => $applications,
-            'wishlist' => $wishlist,
-            'accepted_offer' => $acceptedOffer,
-            'in_progress_offers' => $inProgressOffers,
-            'sent_offers' => $sentOffers,
-            'has_found_stage' => $hasFoundStage,
-            'has_in_progress_stage' => $hasInProgressStage,
         ]);
     }
 }

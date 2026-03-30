@@ -18,7 +18,7 @@
                 </div>
             </div>
 
-            <form method="GET" action="/admin-pilotes" class="apply-form" style="margin-bottom: 18px;">
+            <form method="GET" action="/admin-pilotes" class="apply-form" style="margin-bottom:18px;">
                 <label for="q">Rechercher un pilote</label>
                 <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                     <input
@@ -39,6 +39,7 @@
                         <div class="student-main">
                             <h3>{{ pilot.prenom }} {{ pilot.nom }}</h3>
                             <p>{{ pilot.email }}</p>
+                            <p><strong>Promotions :</strong> {{ pilot.promotions_labels ?: 'Aucune promotion attribuée' }}</p>
                             <small>Créé le {{ pilot.created_at|date('d/m/Y') }}</small>
                         </div>
 

@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Database;
 use App\Security\Csrf;
+use App\Support\PilotPromotionAccess;
 use Twig\Environment;
 
 class AdminPilotFormController
@@ -39,11 +40,21 @@ class AdminPilotFormController
         $error = null;
         $success = null;
 
+        $promotionsStmt = $pdo->query("
+            SELECT id, label
+            FROM promotions
+            WHERE is_active = 1
+            ORDER BY label ASC
+        ");
+        $promotions = $promotionsStmt->fetchAll();
+        $availablePromotionIds = array_map(static fn(array $promotion): int => (int) $promotion['id'], $promotions);
+
         $pilot = [
             'id' => null,
             'nom' => '',
             'prenom' => '',
             'email' => '',
+            'promotion_ids' => [],
         ];
 
         if ($isEdit) {
@@ -63,6 +74,7 @@ class AdminPilotFormController
             }
 
             $pilot = $existingPilot;
+            $pilot['promotion_ids'] = PilotPromotionAccess::getAssignedPromotionIds($pdo, (int) $pilotId);
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -72,10 +84,23 @@ class AdminPilotFormController
             $prenom = trim((string) ($_POST['prenom'] ?? ''));
             $email = trim((string) ($_POST['email'] ?? ''));
             $password = (string) ($_POST['password'] ?? '');
+            $promotionIdsRaw = $_POST['promotion_ids'] ?? [];
+
+            $promotionIds = [];
+            if (is_array($promotionIdsRaw)) {
+                foreach ($promotionIdsRaw as $promotionIdRaw) {
+                    if (ctype_digit((string) $promotionIdRaw)) {
+                        $promotionIds[] = (int) $promotionIdRaw;
+                    }
+                }
+            }
+
+            $promotionIds = array_values(array_unique($promotionIds));
 
             $pilot['nom'] = $nom;
             $pilot['prenom'] = $prenom;
             $pilot['email'] = $email;
+            $pilot['promotion_ids'] = $promotionIds;
 
             if ($nom === '' || $prenom === '' || $email === '') {
                 $error = 'Merci de remplir tous les champs obligatoires.';
@@ -83,6 +108,10 @@ class AdminPilotFormController
                 $error = 'Adresse email invalide.';
             } elseif (!$isEdit && mb_strlen($password) < 8) {
                 $error = 'Le mot de passe initial doit contenir au moins 8 caractères.';
+            } elseif ($promotionIds === []) {
+                $error = 'Merci de sélectionner au moins une promotion.';
+            } elseif (array_diff($promotionIds, $availablePromotionIds) !== []) {
+                $error = 'Une ou plusieurs promotions sélectionnées sont invalides.';
             } else {
                 if ($isEdit) {
                     $stmt = $pdo->prepare("
@@ -103,13 +132,17 @@ class AdminPilotFormController
                         WHERE email = :email
                         LIMIT 1
                     ");
-                    $stmt->execute(['email' => $email]);
+                    $stmt->execute([
+                        'email' => $email,
+                    ]);
                 }
 
                 if ($stmt->fetch()) {
                     $error = 'Cet email est déjà utilisé.';
                 } else {
                     try {
+                        $pdo->beginTransaction();
+
                         if ($isEdit) {
                             $stmt = $pdo->prepare("
                                 UPDATE users
@@ -126,7 +159,8 @@ class AdminPilotFormController
                                 'email' => $email,
                             ]);
 
-                            $success = 'Compte pilote mis à jour avec succès.';
+                            $finalPilotId = (int) $pilotId;
+                            $success = 'Pilote modifié avec succès.';
                         } else {
                             $stmt = $pdo->prepare("
                                 INSERT INTO users (nom, prenom, email, password_hash, role)
@@ -139,10 +173,32 @@ class AdminPilotFormController
                                 'password_hash' => password_hash($password, PASSWORD_DEFAULT),
                             ]);
 
-                            $pilotId = (int) $pdo->lastInsertId();
+                            $finalPilotId = (int) $pdo->lastInsertId();
+                            $success = 'Pilote créé avec succès.';
                             $isEdit = true;
-                            $success = 'Compte pilote créé avec succès.';
                         }
+
+                        $deleteStmt = $pdo->prepare("
+                            DELETE FROM pilot_promotions
+                            WHERE pilot_user_id = :pilot_user_id
+                        ");
+                        $deleteStmt->execute([
+                            'pilot_user_id' => $finalPilotId,
+                        ]);
+
+                        $insertStmt = $pdo->prepare("
+                            INSERT INTO pilot_promotions (pilot_user_id, promotion_id)
+                            VALUES (:pilot_user_id, :promotion_id)
+                        ");
+
+                        foreach ($promotionIds as $promotionId) {
+                            $insertStmt->execute([
+                                'pilot_user_id' => $finalPilotId,
+                                'promotion_id' => $promotionId,
+                            ]);
+                        }
+
+                        $pdo->commit();
 
                         $stmt = $pdo->prepare("
                             SELECT id, nom, prenom, email
@@ -151,11 +207,16 @@ class AdminPilotFormController
                               AND role = 'pilote'
                             LIMIT 1
                         ");
-                        $stmt->execute(['id' => $pilotId]);
+                        $stmt->execute(['id' => $finalPilotId]);
                         $pilot = $stmt->fetch();
+                        $pilot['promotion_ids'] = PilotPromotionAccess::getAssignedPromotionIds($pdo, $finalPilotId);
                     } catch (\Throwable $e) {
+                        if ($pdo->inTransaction()) {
+                            $pdo->rollBack();
+                        }
+
                         $error = $isEdit
-                            ? 'Erreur lors de la mise à jour du pilote.'
+                            ? 'Erreur lors de la modification du pilote.'
                             : 'Erreur lors de la création du pilote.';
                     }
                 }
@@ -164,6 +225,7 @@ class AdminPilotFormController
 
         return $this->twig->render('admin-pilot-form.html.twig', [
             'pilot' => $pilot,
+            'promotions' => $promotions,
             'is_edit' => $isEdit,
             'error' => $error,
             'success' => $success,

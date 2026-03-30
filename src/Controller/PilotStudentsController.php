@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
-use Twig\Environment;
+use App\Support\PilotPromotionAccess;
 use PDO;
+use Twig\Environment;
 
 class PilotStudentsController
 {
@@ -28,26 +29,40 @@ class PilotStudentsController
         }
 
         $pdo = Database::getConnection();
+        $currentUserRole = $_SESSION['user']['role'] ?? null;
+        $currentUserId = (int) ($_SESSION['user']['id'] ?? 0);
+
+        $allowedPromotionIds = [];
+        if ($currentUserRole === 'pilote') {
+            $allowedPromotionIds = PilotPromotionAccess::getAssignedPromotionIds($pdo, $currentUserId);
+        }
 
         $selectedPromotionId = isset($_GET['promotion_id']) && ctype_digit((string) $_GET['promotion_id'])
             ? (int) $_GET['promotion_id']
             : null;
 
-        $search = trim((string) ($_GET['q'] ?? ''));
+        if ($currentUserRole === 'pilote' && $selectedPromotionId !== null && !in_array($selectedPromotionId, $allowedPromotionIds, true)) {
+            $selectedPromotionId = null;
+        }
 
+        $search = trim((string) ($_GET['q'] ?? ''));
         $currentPage = isset($_GET['page']) && ctype_digit((string) $_GET['page']) && (int) $_GET['page'] > 0
             ? (int) $_GET['page']
             : 1;
 
         $perPage = 10;
 
-        $promotionsStmt = $pdo->query("
-            SELECT id, label
-            FROM promotions
-            WHERE is_active = 1
-            ORDER BY label ASC
-        ");
-        $promotions = $promotionsStmt->fetchAll();
+        if ($currentUserRole === 'pilote') {
+            $promotions = PilotPromotionAccess::getPromotionsByIds($pdo, $allowedPromotionIds);
+        } else {
+            $promotionsStmt = $pdo->query("
+                SELECT id, label
+                FROM promotions
+                WHERE is_active = 1
+                ORDER BY label ASC
+            ");
+            $promotions = $promotionsStmt->fetchAll();
+        }
 
         $countSql = "
             SELECT COUNT(*)
@@ -59,8 +74,22 @@ class PilotStudentsController
 
         $countParams = [];
 
+        if ($currentUserRole === 'pilote') {
+            if ($allowedPromotionIds === []) {
+                $countSql .= " AND 1 = 0 ";
+            } else {
+                $placeholders = [];
+                foreach ($allowedPromotionIds as $index => $promotionId) {
+                    $key = ':allowed_promotion_' . $index;
+                    $placeholders[] = $key;
+                    $countParams['allowed_promotion_' . $index] = $promotionId;
+                }
+                $countSql .= " AND sp.promotion_id IN (" . implode(', ', $placeholders) . ")";
+            }
+        }
+
         if ($selectedPromotionId !== null) {
-            $countSql .= " AND sp.promotion_id = :promotion_id ";
+            $countSql .= " AND sp.promotion_id = :promotion_id";
             $countParams['promotion_id'] = $selectedPromotionId;
         }
 
@@ -82,7 +111,6 @@ class PilotStudentsController
         $totalStudents = (int) $countStmt->fetchColumn();
 
         $totalPages = max(1, (int) ceil($totalStudents / $perPage));
-
         if ($currentPage > $totalPages) {
             $currentPage = $totalPages;
         }
@@ -107,8 +135,22 @@ class PilotStudentsController
 
         $params = [];
 
+        if ($currentUserRole === 'pilote') {
+            if ($allowedPromotionIds === []) {
+                $sql .= " AND 1 = 0 ";
+            } else {
+                $placeholders = [];
+                foreach ($allowedPromotionIds as $index => $promotionId) {
+                    $key = ':allowed_promotion_' . $index;
+                    $placeholders[] = $key;
+                    $params['allowed_promotion_' . $index] = $promotionId;
+                }
+                $sql .= " AND sp.promotion_id IN (" . implode(', ', $placeholders) . ")";
+            }
+        }
+
         if ($selectedPromotionId !== null) {
-            $sql .= " AND sp.promotion_id = :promotion_id ";
+            $sql .= " AND sp.promotion_id = :promotion_id";
             $params['promotion_id'] = $selectedPromotionId;
         }
 
@@ -125,16 +167,23 @@ class PilotStudentsController
             $params['search'] = '%' . $search . '%';
         }
 
-        $sql .= " ORDER BY u.nom ASC, u.prenom ASC LIMIT :limit OFFSET :offset ";
+        $sql .= " ORDER BY u.nom ASC, u.prenom ASC LIMIT :limit OFFSET :offset";
 
         $stmt = $pdo->prepare($sql);
 
-        if ($selectedPromotionId !== null) {
-            $stmt->bindValue(':promotion_id', $selectedPromotionId, PDO::PARAM_INT);
+        foreach ($params as $name => $value) {
+            if ($name === 'search') {
+                continue;
+            }
+            $stmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
         }
 
         if ($search !== '') {
             $stmt->bindValue(':search', '%' . $search . '%', PDO::PARAM_STR);
+        }
+
+        if ($selectedPromotionId !== null) {
+            $stmt->bindValue(':promotion_id', $selectedPromotionId, PDO::PARAM_INT);
         }
 
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
