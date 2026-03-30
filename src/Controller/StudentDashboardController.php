@@ -43,16 +43,6 @@ class StudentDashboardController
         $wishlistCount = (int) $stmt->fetchColumn();
 
         $stmt = $pdo->prepare("
-            SELECT COUNT(DISTINCT o.id)
-            FROM offres o
-            INNER JOIN offre_competence oc ON oc.offre_id = o.id
-            INNER JOIN student_competence sc ON sc.competence_id = oc.competence_id
-            WHERE sc.user_id = :user_id
-        ");
-        $stmt->execute(['user_id' => $userId]);
-        $recommendationsCount = (int) $stmt->fetchColumn();
-
-        $stmt = $pdo->prepare("
             SELECT
                 c.id,
                 c.status,
@@ -69,36 +59,13 @@ class StudentDashboardController
         $stmt->execute(['user_id' => $userId]);
         $recentApplications = $stmt->fetchAll();
 
-        $stmt = $pdo->prepare("
-            SELECT
-                o.id,
-                o.titre,
-                o.entreprise,
-                COUNT(*) AS match_count
-            FROM offres o
-            INNER JOIN offre_competence oc ON oc.offre_id = o.id
-            INNER JOIN student_competence sc ON sc.competence_id = oc.competence_id
-            WHERE sc.user_id = :user_id
-            GROUP BY o.id, o.titre, o.entreprise
-            ORDER BY match_count DESC, o.created_at DESC
-            LIMIT 3
-        ");
-        $stmt->execute(['user_id' => $userId]);
-        $recommendedOffers = $stmt->fetchAll();
-
-        foreach ($recommendedOffers as &$offer) {
-            $offer['match_percent'] = min(95, 70 + ((int) $offer['match_count'] * 10));
-        }
-
         return $this->twig->render('student-dashboard.html.twig', [
             'site_name' => 'Help Me Stage',
             'stats' => [
                 'applications' => $applicationsCount,
                 'wishlist' => $wishlistCount,
-                'recommendations' => $recommendationsCount,
             ],
             'recent_applications' => $recentApplications,
-            'recommended_offers' => $recommendedOffers,
         ]);
     }
 }

@@ -30,14 +30,6 @@
                     <strong>{{ stats.wishlist }}</strong>
                 </div>
             </article>
-
-            <article class="student-stat-card">
-                <div class="student-stat-icon">📈</div>
-                <div>
-                    <span>Recommandations</span>
-                    <strong>{{ stats.recommendations }}</strong>
-                </div>
-            </article>
         </section>
 
         <section class="student-section">
@@ -68,34 +60,6 @@
                 {% else %}
                     <p class="empty-state">Aucune candidature pour le moment.</p>
                 {% endfor %}
-            </div>
-        </section>
-
-        <section class="student-section">
-            <div class="student-section-header">
-                <h2>Offres recommandées pour vous</h2>
-            </div>
-
-            <div class="student-list">
-                {% for offer in recommended_offers %}
-                    <article class="student-row">
-                        <div class="student-main">
-                            <h3>{{ offer.titre }}</h3>
-                            <p>{{ offer.entreprise }}</p>
-                        </div>
-
-                        <div class="student-actions">
-                            <span class="badge badge-green">{{ offer.match_percent }}% Match</span>
-                            <a href="/offres/{{ offer.id }}" class="student-link">Voir l'offre</a>
-                        </div>
-                    </article>
-                {% else %}
-                    <p class="empty-state">Aucune recommandation disponible.</p>
-                {% endfor %}
-            </div>
-
-            <div class="student-footer-action">
-                <a href="/offres" class="cta-button">Voir toutes les offres</a>
             </div>
         </section>
 
