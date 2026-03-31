@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Database;
 use Twig\Environment;
+use PDO;
 
 class PilotOffersController
 {
@@ -55,32 +56,43 @@ class PilotOffersController
             WHERE 1 = 1
         ";
 
-        $params = [];
+        $countParams = [];
+        $dataParams = [];
 
         if ($search !== '') {
             $countSql .= "
                 AND (
-                    o.titre LIKE :search
-                    OR o.lieu LIKE :search
-                    OR o.entreprise LIKE :search
-                    OR e.nom LIKE :search
+                    o.titre LIKE :count_search_title
+                    OR o.lieu LIKE :count_search_location
+                    OR o.entreprise LIKE :count_search_company
+                    OR e.nom LIKE :count_search_company_name
                 )
             ";
 
             $dataSql .= "
                 AND (
-                    o.titre LIKE :search
-                    OR o.lieu LIKE :search
-                    OR o.entreprise LIKE :search
-                    OR e.nom LIKE :search
+                    o.titre LIKE :data_search_title
+                    OR o.lieu LIKE :data_search_location
+                    OR o.entreprise LIKE :data_search_company
+                    OR e.nom LIKE :data_search_company_name
                 )
             ";
 
-            $params['search'] = '%' . $search . '%';
+            $searchValue = '%' . $search . '%';
+
+            $countParams['count_search_title'] = $searchValue;
+            $countParams['count_search_location'] = $searchValue;
+            $countParams['count_search_company'] = $searchValue;
+            $countParams['count_search_company_name'] = $searchValue;
+
+            $dataParams['data_search_title'] = $searchValue;
+            $dataParams['data_search_location'] = $searchValue;
+            $dataParams['data_search_company'] = $searchValue;
+            $dataParams['data_search_company_name'] = $searchValue;
         }
 
         $countStmt = $pdo->prepare($countSql);
-        $countStmt->execute($params);
+        $countStmt->execute($countParams);
         $totalOffers = (int) $countStmt->fetchColumn();
 
         $totalPages = max(1, (int) ceil($totalOffers / self::PER_PAGE));
@@ -98,17 +110,16 @@ class PilotOffersController
 
         $stmt = $pdo->prepare($dataSql);
 
-        if ($search !== '') {
-            $stmt->bindValue(':search', '%' . $search . '%', \PDO::PARAM_STR);
+        foreach ($dataParams as $key => $value) {
+            $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
         }
 
-        $stmt->bindValue(':limit', self::PER_PAGE, \PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
+        $stmt->bindValue(':limit', self::PER_PAGE, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
 
         $offers = $stmt->fetchAll();
 
-        // Suggestions autocomplete : titres + entreprises + lieux
         $suggestionsStmt = $pdo->query("
             SELECT suggestion
             FROM (
@@ -133,7 +144,7 @@ class PilotOffersController
             ORDER BY suggestion ASC
         ");
 
-        $offerSuggestions = $suggestionsStmt->fetchAll(\PDO::FETCH_COLUMN);
+        $offerSuggestions = $suggestionsStmt->fetchAll(PDO::FETCH_COLUMN);
 
         return $this->twig->render('pilot-offers.html.twig', [
             'offers' => $offers,

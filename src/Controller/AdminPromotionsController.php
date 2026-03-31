@@ -45,11 +45,14 @@ class AdminPromotionsController
         if ($search !== '') {
             $sql .= "
                 AND (
-                    p.label LIKE :search
-                    OR p.academic_year LIKE :search
+                    p.label LIKE :search_label
+                    OR p.academic_year LIKE :search_year
                 )
             ";
-            $params['search'] = '%' . $search . '%';
+
+            $searchValue = '%' . $search . '%';
+            $params['search_label'] = $searchValue;
+            $params['search_year'] = $searchValue;
         }
 
         $sql .= "

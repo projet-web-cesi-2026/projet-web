@@ -49,12 +49,17 @@ class AdminCompaniesController
 
         if ($search !== '') {
             $sql .= " AND (
-                nom LIKE :search
-                OR siret LIKE :search
-                OR secteur LIKE :search
-                OR ville LIKE :search
+                nom LIKE :search_nom
+                OR siret LIKE :search_siret
+                OR secteur LIKE :search_secteur
+                OR ville LIKE :search_ville
             ) ";
-            $params['search'] = '%' . $search . '%';
+
+            $searchValue = '%' . $search . '%';
+            $params['search_nom'] = $searchValue;
+            $params['search_siret'] = $searchValue;
+            $params['search_secteur'] = $searchValue;
+            $params['search_ville'] = $searchValue;
         }
 
         $sql .= " ORDER BY nom ASC ";

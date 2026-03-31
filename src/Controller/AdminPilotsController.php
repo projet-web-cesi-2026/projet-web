@@ -52,12 +52,16 @@ class AdminPilotsController
         if ($search !== '') {
             $sql .= "
                 AND (
-                    u.nom LIKE :search
-                    OR u.prenom LIKE :search
-                    OR u.email LIKE :search
+                    u.nom LIKE :search_nom
+                    OR u.prenom LIKE :search_prenom
+                    OR u.email LIKE :search_email
                 )
             ";
-            $params['search'] = '%' . $search . '%';
+
+            $searchValue = '%' . $search . '%';
+            $params['search_nom'] = $searchValue;
+            $params['search_prenom'] = $searchValue;
+            $params['search_email'] = $searchValue;
         }
 
         $sql .= "
