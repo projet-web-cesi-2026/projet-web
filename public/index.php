@@ -15,7 +15,6 @@ use App\Controller\CookieConsentController;
 use App\Controller\HomeController;
 use App\Controller\LegalController;
 use App\Controller\OfferController;
-use App\Controller\OfferDetailController;
 use App\Controller\PilotApplicationController;
 use App\Controller\PilotDashboardController;
 use App\Controller\PilotOfferController;
@@ -118,73 +117,85 @@ $twig->addGlobal('show_cookie_banner', $showCookieBanner);
 $uri = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+/*
+|--------------------------------------------------------------------------
+| Routes dynamiques
+|--------------------------------------------------------------------------
+*/
+
 // Détail offre
 if ($method === 'GET' && preg_match('#^/offres/([0-9]+)$#', $uri, $matches)) {
-    echo (new OfferDetailController($twig))->show((int) $matches[1]);
+    echo (new OfferController($twig))->show((int) $matches[1]);
     exit;
 }
 
-// Postuler à une offre
+// Postuler
 if (preg_match('#^/offres/([0-9]+)/postuler$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
     echo (new ApplyController($twig))->form((int) $matches[1]);
     exit;
 }
 
-// Wishlist ajouter
+// Wishlist
 if ($method === 'POST' && preg_match('#^/offres/([0-9]+)/wishlist/ajouter$#', $uri, $matches)) {
     (new WishlistController($twig))->add((int) $matches[1]);
     exit;
 }
 
-// Wishlist supprimer
 if ($method === 'POST' && preg_match('#^/offres/([0-9]+)/wishlist/supprimer$#', $uri, $matches)) {
     (new WishlistController($twig))->remove((int) $matches[1]);
     exit;
 }
 
-// Mise à jour statut candidature côté pilote
+// Candidatures pilote
 if ($method === 'POST' && preg_match('#^/pilot-candidature/([0-9]+)/status$#', $uri, $matches)) {
     (new PilotApplicationController($twig))->updateStatus((int) $matches[1]);
     exit;
 }
 
-// Détail étudiant côté pilote
+// Étudiants pilote
 if ($method === 'GET' && preg_match('#^/pilot-etudiants/([0-9]+)$#', $uri, $matches)) {
     echo (new PilotStudentController($twig))->show((int) $matches[1]);
     exit;
 }
 
-// Suppression étudiant côté pilote
 if ($method === 'POST' && preg_match('#^/pilot-etudiants/([0-9]+)/supprimer$#', $uri, $matches)) {
     (new PilotStudentController($twig))->delete((int) $matches[1]);
     exit;
 }
 
-// Création étudiant
 if ($uri === '/pilot-etudiant-create' && in_array($method, ['GET', 'POST'], true)) {
     echo (new PilotStudentController($twig))->create();
     exit;
 }
 
-// Édition étudiant
 if (preg_match('#^/pilot-etudiants/([0-9]+)/editer$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
     echo (new PilotStudentController($twig))->edit((int) $matches[1]);
     exit;
 }
 
-// Consentement cookies
-if ($uri === '/cookies/consent' && $method === 'POST') {
-    (new CookieConsentController())->save();
+// Offres pilote
+if ($uri === '/pilot-offre-create' && in_array($method, ['GET', 'POST'], true)) {
+    echo (new PilotOfferController($twig))->create();
+    exit;
+}
+
+if (preg_match('#^/pilot-offres/([0-9]+)/editer$#', $uri, $matches)) {
+    echo (new PilotOfferController($twig))->edit((int) $matches[1]);
+    exit;
+}
+
+if ($method === 'POST' && preg_match('#^/pilot-offres/([0-9]+)/supprimer$#', $uri, $matches)) {
+    (new PilotOfferController($twig))->delete((int) $matches[1]);
     exit;
 }
 
 // Admin pilotes
-if ($uri === '/admin-pilote-create' && in_array($method, ['GET', 'POST'], true)) {
+if ($uri === '/admin-pilote-create') {
     echo (new AdminPilotController($twig))->create();
     exit;
 }
 
-if (preg_match('#^/admin-pilotes/([0-9]+)/editer$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
+if (preg_match('#^/admin-pilotes/([0-9]+)/editer$#', $uri, $matches)) {
     echo (new AdminPilotController($twig))->edit((int) $matches[1]);
     exit;
 }
@@ -195,12 +206,12 @@ if ($method === 'POST' && preg_match('#^/admin-pilotes/([0-9]+)/supprimer$#', $u
 }
 
 // Admin entreprises
-if ($uri === '/admin-entreprise-create' && in_array($method, ['GET', 'POST'], true)) {
+if ($uri === '/admin-entreprise-create') {
     echo (new AdminCompanyController($twig))->create();
     exit;
 }
 
-if (preg_match('#^/admin-entreprises/([0-9]+)/editer$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
+if (preg_match('#^/admin-entreprises/([0-9]+)/editer$#', $uri, $matches)) {
     echo (new AdminCompanyController($twig))->edit((int) $matches[1]);
     exit;
 }
@@ -210,29 +221,13 @@ if ($method === 'POST' && preg_match('#^/admin-entreprises/([0-9]+)/supprimer$#'
     exit;
 }
 
-// Offres pilote/admin
-if ($uri === '/pilot-offre-create' && in_array($method, ['GET', 'POST'], true)) {
-    echo (new PilotOfferController($twig))->create();
-    exit;
-}
-
-if (preg_match('#^/pilot-offres/([0-9]+)/editer$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
-    echo (new PilotOfferController($twig))->edit((int) $matches[1]);
-    exit;
-}
-
-if ($method === 'POST' && preg_match('#^/pilot-offres/([0-9]+)/supprimer$#', $uri, $matches)) {
-    (new PilotOfferController($twig))->delete((int) $matches[1]);
-    exit;
-}
-
 // Admin promotions
-if ($uri === '/admin-promotion-create' && in_array($method, ['GET', 'POST'], true)) {
+if ($uri === '/admin-promotion-create') {
     echo (new AdminPromotionController($twig))->create();
     exit;
 }
 
-if (preg_match('#^/admin-promotions/([0-9]+)/editer$#', $uri, $matches) && in_array($method, ['GET', 'POST'], true)) {
+if (preg_match('#^/admin-promotions/([0-9]+)/editer$#', $uri, $matches)) {
     echo (new AdminPromotionController($twig))->edit((int) $matches[1]);
     exit;
 }
@@ -241,6 +236,12 @@ if ($method === 'POST' && preg_match('#^/admin-promotions/([0-9]+)/supprimer$#',
     (new AdminPromotionController($twig))->delete((int) $matches[1]);
     exit;
 }
+
+/*
+|--------------------------------------------------------------------------
+| Routes statiques
+|--------------------------------------------------------------------------
+*/
 
 switch ($uri) {
     case '/':
