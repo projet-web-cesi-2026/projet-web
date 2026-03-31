@@ -38,18 +38,16 @@
 
     <nav class="mobile-menu" id="mobile-menu">
         {% if current_user %}
+
+            {# ADMIN #}
             {% if current_user.role == 'administrateur' %}
                 <a href="/espace-admin">Mon espace administrateur</a>
-                <a href="/admin-entreprises">Gestion des entreprises</a>
-                <a href="/admin-pilotes">Gestion des pilotes</a>
-                <a href="/pilot-etudiants">Gestion des étudiants</a>
-                <a href="/pilot-offres">Gestion des offres</a>
-                <a href="/pilot-candidatures">Gestion des candidatures</a>
+
+            {# PILOTE #}
             {% elseif current_user.role == 'pilote' %}
                 <a href="/espace-pilote">Mon espace pilote</a>
-                <a href="/pilot-etudiants">Étudiants</a>
-                <a href="/pilot-candidatures">Candidatures</a>
-                <a href="/pilot-offres">Offres</a>
+
+            {# ETUDIANT #}
             {% elseif current_user.role == 'etudiant' %}
                 <a href="/espace-etudiant">Mon espace étudiant</a>
                 <a href="/etudiant-candidatures">Mes candidatures</a>
@@ -58,6 +56,7 @@
 
             <a href="/offres">Voir les offres</a>
             <a href="/logout">Déconnexion</a>
+
         {% else %}
             <a href="/#comment-ca-marche">Comment ça marche ?</a>
             <a href="/offres">Voir les offres</a>
@@ -91,7 +90,7 @@
             <h3>Gestion des cookies</h3>
             <p>
                 Nous utilisons des cookies essentiels pour le fonctionnement du site, ainsi que des cookies optionnels
-                pour améliorer l’expérience utilisateur. Vous pouvez accepter, refuser ou personnaliser votre choix.
+                pour améliorer l’expérience utilisateur.
             </p>
         </div>
 
