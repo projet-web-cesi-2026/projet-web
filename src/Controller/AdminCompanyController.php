@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\CompanyRepository;
 use App\Security\Csrf;
 use Twig\Environment;
 
 class AdminCompanyController
 {
     private Environment $twig;
+    private CompanyRepository $companyRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->companyRepository = new CompanyRepository(Database::getConnection());
     }
 
     public function index(): string
@@ -27,47 +30,9 @@ class AdminCompanyController
             exit;
         }
 
-        $pdo = Database::getConnection();
-
         $search = trim((string) ($_GET['q'] ?? ''));
 
-        $sql = "
-            SELECT
-                id,
-                nom,
-                siret,
-                secteur,
-                ville,
-                site_web,
-                note,
-                commentaire,
-                created_at
-            FROM entreprises
-            WHERE 1 = 1
-        ";
-
-        $params = [];
-
-        if ($search !== '') {
-            $sql .= " AND (
-                nom LIKE :search_nom
-                OR siret LIKE :search_siret
-                OR secteur LIKE :search_secteur
-                OR ville LIKE :search_ville
-            ) ";
-
-            $searchValue = '%' . $search . '%';
-            $params['search_nom'] = $searchValue;
-            $params['search_siret'] = $searchValue;
-            $params['search_secteur'] = $searchValue;
-            $params['search_ville'] = $searchValue;
-        }
-
-        $sql .= " ORDER BY nom ASC ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-        $companies = $stmt->fetchAll();
+        $companies = $this->companyRepository->findAll($search);
 
         return $this->twig->render('admin-companies.html.twig', [
             'companies' => $companies,
@@ -95,7 +60,6 @@ class AdminCompanyController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $isEdit = $companyId !== null;
         $error = null;
         $success = null;
@@ -111,14 +75,7 @@ class AdminCompanyController
         ];
 
         if ($isEdit) {
-            $stmt = $pdo->prepare("
-                SELECT id, nom, secteur, ville, site_web, note, commentaire
-                FROM entreprises
-                WHERE id = :id
-                LIMIT 1
-            ");
-            $stmt->execute(['id' => $companyId]);
-            $existingCompany = $stmt->fetch();
+            $existingCompany = $this->companyRepository->findById($companyId);
 
             if (!$existingCompany) {
                 http_response_code(404);
@@ -163,81 +120,51 @@ class AdminCompanyController
                 $error = "L'URL du site web est invalide.";
             }
 
+            if ($error === null && $this->companyRepository->nameExists($nom, $isEdit ? $companyId : null)) {
+                $error = 'Une entreprise avec ce nom existe déjà.';
+            }
+
             if ($error === null) {
-                if ($isEdit) {
-                    $stmt = $pdo->prepare("
-                        SELECT id FROM entreprises
-                        WHERE nom = :nom AND id != :id
-                        LIMIT 1
-                    ");
-                    $stmt->execute(['nom' => $nom, 'id' => $companyId]);
-                } else {
-                    $stmt = $pdo->prepare("
-                        SELECT id FROM entreprises
-                        WHERE nom = :nom
-                        LIMIT 1
-                    ");
-                    $stmt->execute(['nom' => $nom]);
-                }
+                try {
+                    $secteurValue = $secteur !== '' ? $secteur : null;
+                    $villeValue = $ville !== '' ? $ville : null;
+                    $siteWebValue = $siteWeb !== '' ? $siteWeb : null;
+                    $commentaireValue = $commentaire !== '' ? $commentaire : null;
 
-                if ($stmt->fetch()) {
-                    $error = 'Une entreprise avec ce nom existe déjà.';
-                } else {
-                    try {
-                        if ($isEdit) {
-                            $stmt = $pdo->prepare("
-                                UPDATE entreprises
-                                SET nom = :nom,
-                                    secteur = :secteur,
-                                    ville = :ville,
-                                    site_web = :site_web,
-                                    note = :note,
-                                    commentaire = :commentaire
-                                WHERE id = :id
-                            ");
-                            $stmt->execute([
-                                'id' => $companyId,
-                                'nom' => $nom,
-                                'secteur' => $secteur !== '' ? $secteur : null,
-                                'ville' => $ville !== '' ? $ville : null,
-                                'site_web' => $siteWeb !== '' ? $siteWeb : null,
-                                'note' => $note,
-                                'commentaire' => $commentaire !== '' ? $commentaire : null,
-                            ]);
+                    if ($isEdit) {
+                        $this->companyRepository->update(
+                            $companyId,
+                            $nom,
+                            $secteurValue,
+                            $villeValue,
+                            $siteWebValue,
+                            $note,
+                            $commentaireValue
+                        );
 
-                            $success = 'Entreprise mise à jour avec succès.';
-                        } else {
-                            $stmt = $pdo->prepare("
-                                INSERT INTO entreprises (nom, secteur, ville, site_web, note, commentaire)
-                                VALUES (:nom, :secteur, :ville, :site_web, :note, :commentaire)
-                            ");
-                            $stmt->execute([
-                                'nom' => $nom,
-                                'secteur' => $secteur !== '' ? $secteur : null,
-                                'ville' => $ville !== '' ? $ville : null,
-                                'site_web' => $siteWeb !== '' ? $siteWeb : null,
-                                'note' => $note,
-                                'commentaire' => $commentaire !== '' ? $commentaire : null,
-                            ]);
+                        $success = 'Entreprise mise à jour avec succès.';
+                    } else {
+                        $companyId = $this->companyRepository->create(
+                            $nom,
+                            $secteurValue,
+                            $villeValue,
+                            $siteWebValue,
+                            $note,
+                            $commentaireValue
+                        );
 
-                            $companyId = (int) $pdo->lastInsertId();
-                            $isEdit = true;
-                            $success = 'Entreprise créée avec succès.';
-                        }
-
-                        $stmt = $pdo->prepare("
-                            SELECT id, nom, secteur, ville, site_web, note, commentaire
-                            FROM entreprises
-                            WHERE id = :id
-                            LIMIT 1
-                        ");
-                        $stmt->execute(['id' => $companyId]);
-                        $company = $stmt->fetch();
-                    } catch (\Throwable $e) {
-                        $error = $isEdit
-                            ? "Erreur lors de la mise à jour de l'entreprise."
-                            : "Erreur lors de la création de l'entreprise.";
+                        $isEdit = true;
+                        $success = 'Entreprise créée avec succès.';
                     }
+
+                    $reloadedCompany = $this->companyRepository->findById($companyId);
+                    if ($reloadedCompany) {
+                        $company = $reloadedCompany;
+                    }
+                } catch (\Throwable $e) {
+                    $error = $isEdit
+                        ? "Erreur lors de la mise à jour de l'entreprise."
+                        : "Erreur lors de la création de l'entreprise.";
                 }
             }
         }
@@ -262,29 +189,9 @@ class AdminCompanyController
 
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $pdo = Database::getConnection();
-
         try {
-            $pdo->beginTransaction();
-
-            $stmt = $pdo->prepare("
-                UPDATE offres
-                SET entreprise_id = NULL
-                WHERE entreprise_id = :id
-            ");
-            $stmt->execute(['id' => $companyId]);
-
-            $stmt = $pdo->prepare("
-                DELETE FROM entreprises
-                WHERE id = :id
-            ");
-            $stmt->execute(['id' => $companyId]);
-
-            $pdo->commit();
+            $this->companyRepository->delete($companyId);
         } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
         }
 
         header('Location: /admin-entreprises');

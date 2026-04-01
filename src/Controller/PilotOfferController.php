@@ -5,18 +5,20 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\OfferRepository;
 use App\Security\Csrf;
 use Twig\Environment;
-use PDO;
 
 class PilotOfferController
 {
     private Environment $twig;
+    private OfferRepository $offerRepository;
     private const PER_PAGE = 10;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->offerRepository = new OfferRepository(Database::getConnection());
     }
 
     public function index(): string
@@ -29,73 +31,12 @@ class PilotOfferController
             exit;
         }
 
-        $pdo = Database::getConnection();
-
         $search = trim((string) ($_GET['q'] ?? ''));
 
         $page = filter_input(INPUT_GET, 'page', FILTER_VALIDATE_INT);
         $page = ($page !== false && $page !== null && $page > 0) ? $page : 1;
 
-        $countSql = "
-            SELECT COUNT(*)
-            FROM offres o
-            LEFT JOIN entreprises e ON e.id = o.entreprise_id
-            WHERE 1 = 1
-        ";
-
-        $dataSql = "
-            SELECT
-                o.id,
-                o.titre,
-                o.lieu,
-                o.remuneration,
-                o.duree_semaines,
-                o.created_at,
-                COALESCE(e.nom, o.entreprise) AS entreprise_nom
-            FROM offres o
-            LEFT JOIN entreprises e ON e.id = o.entreprise_id
-            WHERE 1 = 1
-        ";
-
-        $countParams = [];
-        $dataParams = [];
-
-        if ($search !== '') {
-            $countSql .= "
-                AND (
-                    o.titre LIKE :count_search_title
-                    OR o.lieu LIKE :count_search_location
-                    OR o.entreprise LIKE :count_search_company
-                    OR e.nom LIKE :count_search_company_name
-                )
-            ";
-
-            $dataSql .= "
-                AND (
-                    o.titre LIKE :data_search_title
-                    OR o.lieu LIKE :data_search_location
-                    OR o.entreprise LIKE :data_search_company
-                    OR e.nom LIKE :data_search_company_name
-                )
-            ";
-
-            $searchValue = '%' . $search . '%';
-
-            $countParams['count_search_title'] = $searchValue;
-            $countParams['count_search_location'] = $searchValue;
-            $countParams['count_search_company'] = $searchValue;
-            $countParams['count_search_company_name'] = $searchValue;
-
-            $dataParams['data_search_title'] = $searchValue;
-            $dataParams['data_search_location'] = $searchValue;
-            $dataParams['data_search_company'] = $searchValue;
-            $dataParams['data_search_company_name'] = $searchValue;
-        }
-
-        $countStmt = $pdo->prepare($countSql);
-        $countStmt->execute($countParams);
-        $totalOffers = (int) $countStmt->fetchColumn();
-
+        $totalOffers = $this->offerRepository->countOffers($search);
         $totalPages = max(1, (int) ceil($totalOffers / self::PER_PAGE));
 
         if ($page > $totalPages) {
@@ -104,48 +45,13 @@ class PilotOfferController
 
         $offset = ($page - 1) * self::PER_PAGE;
 
-        $dataSql .= "
-            ORDER BY o.created_at DESC, o.id DESC
-            LIMIT :limit OFFSET :offset
-        ";
+        $offers = $this->offerRepository->findOffersPaginated(
+            $search,
+            self::PER_PAGE,
+            $offset
+        );
 
-        $stmt = $pdo->prepare($dataSql);
-
-        foreach ($dataParams as $key => $value) {
-            $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
-        }
-
-        $stmt->bindValue(':limit', self::PER_PAGE, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $offers = $stmt->fetchAll();
-
-        $suggestionsStmt = $pdo->query("
-            SELECT suggestion
-            FROM (
-                SELECT TRIM(o.titre) AS suggestion
-                FROM offres o
-                WHERE o.titre IS NOT NULL AND TRIM(o.titre) <> ''
-
-                UNION
-
-                SELECT TRIM(COALESCE(e.nom, o.entreprise)) AS suggestion
-                FROM offres o
-                LEFT JOIN entreprises e ON e.id = o.entreprise_id
-                WHERE COALESCE(e.nom, o.entreprise) IS NOT NULL
-                  AND TRIM(COALESCE(e.nom, o.entreprise)) <> ''
-
-                UNION
-
-                SELECT TRIM(o.lieu) AS suggestion
-                FROM offres o
-                WHERE o.lieu IS NOT NULL AND TRIM(o.lieu) <> ''
-            ) AS suggestions
-            ORDER BY suggestion ASC
-        ");
-
-        $offerSuggestions = $suggestionsStmt->fetchAll(PDO::FETCH_COLUMN);
+        $offerSuggestions = $this->offerRepository->getOfferSuggestions();
 
         return $this->twig->render('pilot-offers.html.twig', [
             'offers' => $offers,
@@ -177,24 +83,12 @@ class PilotOfferController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $isEdit = $offerId !== null;
         $error = null;
         $success = null;
 
-        $companiesStmt = $pdo->query("
-            SELECT id, nom
-            FROM entreprises
-            ORDER BY nom ASC
-        ");
-        $companies = $companiesStmt->fetchAll();
-
-        $skillsStmt = $pdo->query("
-            SELECT id, nom
-            FROM competences
-            ORDER BY nom ASC
-        ");
-        $skills = $skillsStmt->fetchAll();
+        $companies = $this->offerRepository->getAllCompanies();
+        $skills = $this->offerRepository->getAllSkills();
 
         $offer = [
             'id' => null,
@@ -209,22 +103,7 @@ class PilotOfferController
         ];
 
         if ($isEdit) {
-            $stmt = $pdo->prepare("
-                SELECT
-                    o.id,
-                    o.titre,
-                    COALESCE(e.nom, o.entreprise) AS entreprise_nom,
-                    o.lieu,
-                    o.remuneration,
-                    o.duree_semaines,
-                    o.description
-                FROM offres o
-                LEFT JOIN entreprises e ON e.id = o.entreprise_id
-                WHERE o.id = :id
-                LIMIT 1
-            ");
-            $stmt->execute(['id' => $offerId]);
-            $existingOffer = $stmt->fetch();
+            $existingOffer = $this->offerRepository->findOfferById($offerId);
 
             if (!$existingOffer) {
                 http_response_code(404);
@@ -232,17 +111,7 @@ class PilotOfferController
             }
 
             $offer = array_merge($offer, $existingOffer);
-
-            $skillLinkStmt = $pdo->prepare("
-                SELECT competence_id
-                FROM offre_competence
-                WHERE offre_id = :offre_id
-            ");
-            $skillLinkStmt->execute(['offre_id' => $offerId]);
-            $offer['competence_ids'] = array_map(
-                'intval',
-                $skillLinkStmt->fetchAll(PDO::FETCH_COLUMN)
-            );
+            $offer['competence_ids'] = $this->offerRepository->getOfferSkillIds($offerId);
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -304,20 +173,12 @@ class PilotOfferController
             } elseif ($competenceIds === [] && $newSkillNames === []) {
                 $error = 'Merci d’ajouter au moins une compétence.';
             } else {
-                $checkCompany = $pdo->prepare("
-                    SELECT id, nom
-                    FROM entreprises
-                    WHERE nom = :nom
-                    LIMIT 1
-                ");
-                $checkCompany->execute(['nom' => $entrepriseNom]);
-                $company = $checkCompany->fetch();
+                $company = $this->offerRepository->findCompanyByName($entrepriseNom);
 
                 if (!$company) {
                     $error = 'Entreprise invalide. Merci de choisir une entreprise existante.';
                 } else {
-                    $validSkillsStmt = $pdo->query("SELECT id FROM competences");
-                    $validSkillIds = array_map('intval', $validSkillsStmt->fetchAll(PDO::FETCH_COLUMN));
+                    $validSkillIds = $this->offerRepository->getAllSkillIds();
 
                     foreach ($competenceIds as $competenceId) {
                         if (!in_array($competenceId, $validSkillIds, true)) {
@@ -328,163 +189,35 @@ class PilotOfferController
 
                     if ($error === null) {
                         try {
-                            $pdo->beginTransaction();
+                            $currentOfferId = $this->offerRepository->saveOffer(
+                                $isEdit ? $offerId : null,
+                                $titre,
+                                $company,
+                                $lieu,
+                                $remuneration,
+                                $dureeSemaines,
+                                $description,
+                                $competenceIds,
+                                $newSkillNames
+                            );
 
                             if ($isEdit) {
-                                $stmt = $pdo->prepare("
-                                    UPDATE offres
-                                    SET
-                                        titre = :titre,
-                                        entreprise_id = :entreprise_id,
-                                        entreprise = :entreprise_nom,
-                                        lieu = :lieu,
-                                        remuneration = :remuneration,
-                                        duree_semaines = :duree_semaines,
-                                        description = :description
-                                    WHERE id = :id
-                                ");
-                                $stmt->execute([
-                                    'id' => $offerId,
-                                    'titre' => $titre,
-                                    'entreprise_id' => (int) $company['id'],
-                                    'entreprise_nom' => $company['nom'],
-                                    'lieu' => $lieu,
-                                    'remuneration' => $remuneration,
-                                    'duree_semaines' => $dureeSemaines,
-                                    'description' => $description,
-                                ]);
-
-                                $currentOfferId = (int) $offerId;
                                 $success = 'Offre mise à jour avec succès.';
                             } else {
-                                $stmt = $pdo->prepare("
-                                    INSERT INTO offres (
-                                        titre,
-                                        entreprise_id,
-                                        entreprise,
-                                        lieu,
-                                        remuneration,
-                                        duree_semaines,
-                                        description
-                                    )
-                                    VALUES (
-                                        :titre,
-                                        :entreprise_id,
-                                        :entreprise_nom,
-                                        :lieu,
-                                        :remuneration,
-                                        :duree_semaines,
-                                        :description
-                                    )
-                                ");
-                                $stmt->execute([
-                                    'titre' => $titre,
-                                    'entreprise_id' => (int) $company['id'],
-                                    'entreprise_nom' => $company['nom'],
-                                    'lieu' => $lieu,
-                                    'remuneration' => $remuneration,
-                                    'duree_semaines' => $dureeSemaines,
-                                    'description' => $description,
-                                ]);
-
-                                $currentOfferId = (int) $pdo->lastInsertId();
                                 $offerId = $currentOfferId;
                                 $isEdit = true;
                                 $success = 'Offre créée avec succès.';
                             }
 
-                            $createdOrFoundSkillIds = [];
-
-                            foreach ($newSkillNames as $skillName) {
-                                $findSkillStmt = $pdo->prepare("
-                                    SELECT id
-                                    FROM competences
-                                    WHERE LOWER(nom) = LOWER(:nom)
-                                    LIMIT 1
-                                ");
-                                $findSkillStmt->execute(['nom' => $skillName]);
-                                $existingSkillId = $findSkillStmt->fetchColumn();
-
-                                if ($existingSkillId !== false) {
-                                    $createdOrFoundSkillIds[] = (int) $existingSkillId;
-                                } else {
-                                    $insertSkillStmt = $pdo->prepare("
-                                        INSERT INTO competences (nom)
-                                        VALUES (:nom)
-                                    ");
-                                    $insertSkillStmt->execute(['nom' => $skillName]);
-                                    $createdOrFoundSkillIds[] = (int) $pdo->lastInsertId();
-                                }
-                            }
-
-                            $allSkillIds = array_values(array_unique(array_merge($competenceIds, $createdOrFoundSkillIds)));
-
-                            $deleteSkillsStmt = $pdo->prepare("
-                                DELETE FROM offre_competence
-                                WHERE offre_id = :offre_id
-                            ");
-                            $deleteSkillsStmt->execute([
-                                'offre_id' => $currentOfferId,
-                            ]);
-
-                            $insertSkillLinkStmt = $pdo->prepare("
-                                INSERT INTO offre_competence (offre_id, competence_id)
-                                VALUES (:offre_id, :competence_id)
-                            ");
-
-                            foreach ($allSkillIds as $competenceId) {
-                                $insertSkillLinkStmt->execute([
-                                    'offre_id' => $currentOfferId,
-                                    'competence_id' => $competenceId,
-                                ]);
-                            }
-
-                            $pdo->commit();
-
-                            $stmt = $pdo->prepare("
-                                SELECT
-                                    o.id,
-                                    o.titre,
-                                    COALESCE(e.nom, o.entreprise) AS entreprise_nom,
-                                    o.lieu,
-                                    o.remuneration,
-                                    o.duree_semaines,
-                                    o.description
-                                FROM offres o
-                                LEFT JOIN entreprises e ON e.id = o.entreprise_id
-                                WHERE o.id = :id
-                                LIMIT 1
-                            ");
-                            $stmt->execute(['id' => $currentOfferId]);
-                            $reloadedOffer = $stmt->fetch();
-
+                            $reloadedOffer = $this->offerRepository->findOfferById($currentOfferId);
                             if ($reloadedOffer) {
                                 $offer = array_merge($offer, $reloadedOffer);
                             }
 
-                            $skillLinkStmt = $pdo->prepare("
-                                SELECT competence_id
-                                FROM offre_competence
-                                WHERE offre_id = :offre_id
-                            ");
-                            $skillLinkStmt->execute(['offre_id' => $currentOfferId]);
-                            $offer['competence_ids'] = array_map(
-                                'intval',
-                                $skillLinkStmt->fetchAll(PDO::FETCH_COLUMN)
-                            );
+                            $offer['competence_ids'] = $this->offerRepository->getOfferSkillIds($currentOfferId);
                             $offer['new_skill_names'] = [];
-
-                            $skillsStmt = $pdo->query("
-                                SELECT id, nom
-                                FROM competences
-                                ORDER BY nom ASC
-                            ");
-                            $skills = $skillsStmt->fetchAll();
+                            $skills = $this->offerRepository->getAllSkills();
                         } catch (\Throwable $e) {
-                            if ($pdo->inTransaction()) {
-                                $pdo->rollBack();
-                            }
-
                             $error = $isEdit
                                 ? 'Erreur lors de la mise à jour de l’offre.'
                                 : 'Erreur lors de la création de l’offre.';
@@ -517,28 +250,9 @@ class PilotOfferController
 
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $pdo = Database::getConnection();
-
         try {
-            $pdo->beginTransaction();
-
-            $stmt = $pdo->prepare("DELETE FROM student_wishlist WHERE offre_id = :id");
-            $stmt->execute(['id' => $offerId]);
-
-            $stmt = $pdo->prepare("DELETE FROM candidatures WHERE offre_id = :id");
-            $stmt->execute(['id' => $offerId]);
-
-            $stmt = $pdo->prepare("DELETE FROM offre_competence WHERE offre_id = :id");
-            $stmt->execute(['id' => $offerId]);
-
-            $stmt = $pdo->prepare("DELETE FROM offres WHERE id = :id");
-            $stmt->execute(['id' => $offerId]);
-
-            $pdo->commit();
+            $this->offerRepository->deleteOffer($offerId);
         } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
         }
 
         header('Location: /pilot-offres');

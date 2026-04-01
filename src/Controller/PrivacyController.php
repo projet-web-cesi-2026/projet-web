@@ -16,7 +16,7 @@ class PrivacyController
     public function index(): string
     {
         return $this->twig->render('privacy.html.twig', [
-            'site_name' => 'Help Me Stage'
+            'site_name' => 'Help Me Stage',
         ]);
     }
 }

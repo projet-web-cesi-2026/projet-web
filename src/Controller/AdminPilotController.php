@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\PilotRepository;
 use App\Security\Csrf;
 use App\Support\PilotPromotionAccess;
 use Twig\Environment;
@@ -12,10 +13,12 @@ use Twig\Environment;
 class AdminPilotController
 {
     private Environment $twig;
+    private PilotRepository $pilotRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->pilotRepository = new PilotRepository(Database::getConnection());
     }
 
     public function index(): string
@@ -25,57 +28,10 @@ class AdminPilotController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $search = trim((string) ($_GET['q'] ?? ''));
 
-        $sql = "
-            SELECT
-                u.id,
-                u.nom,
-                u.prenom,
-                u.email,
-                u.created_at,
-                COALESCE(
-                    GROUP_CONCAT(
-                        DISTINCT CONCAT(p.label, ' (', p.academic_year, ')')
-                        ORDER BY p.academic_year DESC, p.label ASC
-                        SEPARATOR ', '
-                    ),
-                    ''
-                ) AS promotions_labels
-            FROM users u
-            LEFT JOIN pilot_promotions pp ON pp.pilot_user_id = u.id
-            LEFT JOIN promotions p ON p.id = pp.promotion_id
-            WHERE u.role = 'pilote'
-        ";
-
-        $params = [];
-
-        if ($search !== '') {
-            $sql .= "
-                AND (
-                    u.nom LIKE :search_nom
-                    OR u.prenom LIKE :search_prenom
-                    OR u.email LIKE :search_email
-                )
-            ";
-
-            $searchValue = '%' . $search . '%';
-            $params['search_nom'] = $searchValue;
-            $params['search_prenom'] = $searchValue;
-            $params['search_email'] = $searchValue;
-        }
-
-        $sql .= "
-            GROUP BY u.id, u.nom, u.prenom, u.email, u.created_at
-            ORDER BY u.nom ASC, u.prenom ASC
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-
         return $this->twig->render('admin-pilots.html.twig', [
-            'pilots' => $stmt->fetchAll(),
+            'pilots' => $this->pilotRepository->findAll($search),
             'search' => $search,
         ]);
     }
@@ -102,13 +58,7 @@ class AdminPilotController
         $error = null;
         $success = null;
 
-        $promotionsStmt = $pdo->query("
-            SELECT id, label, academic_year
-            FROM promotions
-            WHERE is_active = 1
-            ORDER BY academic_year DESC, label ASC
-        ");
-        $promotions = $promotionsStmt->fetchAll();
+        $promotions = $this->pilotRepository->getActivePromotions();
         $availablePromotionIds = array_map(static fn(array $promotion): int => (int) $promotion['id'], $promotions);
 
         $pilot = [
@@ -120,15 +70,7 @@ class AdminPilotController
         ];
 
         if ($isEdit) {
-            $stmt = $pdo->prepare("
-                SELECT id, nom, prenom, email
-                FROM users
-                WHERE id = :id
-                  AND role = 'pilote'
-                LIMIT 1
-            ");
-            $stmt->execute(['id' => $pilotId]);
-            $existingPilot = $stmt->fetch();
+            $existingPilot = $this->pilotRepository->findById($pilotId);
 
             if (!$existingPilot) {
                 http_response_code(404);
@@ -174,113 +116,36 @@ class AdminPilotController
                 $error = 'Merci de sélectionner au moins une promotion.';
             } elseif (array_diff($promotionIds, $availablePromotionIds) !== []) {
                 $error = 'Une ou plusieurs promotions sélectionnées sont invalides.';
+            } elseif ($this->pilotRepository->emailExists($email, $isEdit ? $pilotId : null)) {
+                $error = 'Cet email est déjà utilisé.';
             } else {
-                if ($isEdit) {
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM users
-                        WHERE email = :email
-                          AND id != :id
-                        LIMIT 1
-                    ");
-                    $stmt->execute([
-                        'email' => $email,
-                        'id' => $pilotId,
-                    ]);
-                } else {
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM users
-                        WHERE email = :email
-                        LIMIT 1
-                    ");
-                    $stmt->execute([
-                        'email' => $email,
-                    ]);
-                }
+                try {
+                    $finalPilotId = $this->pilotRepository->savePilot(
+                        $isEdit ? $pilotId : null,
+                        $nom,
+                        $prenom,
+                        $email,
+                        $isEdit ? null : $password,
+                        $promotionIds
+                    );
 
-                if ($stmt->fetch()) {
-                    $error = 'Cet email est déjà utilisé.';
-                } else {
-                    try {
-                        $pdo->beginTransaction();
-
-                        if ($isEdit) {
-                            $stmt = $pdo->prepare("
-                                UPDATE users
-                                SET nom = :nom,
-                                    prenom = :prenom,
-                                    email = :email
-                                WHERE id = :id
-                                  AND role = 'pilote'
-                            ");
-                            $stmt->execute([
-                                'id' => $pilotId,
-                                'nom' => $nom,
-                                'prenom' => $prenom,
-                                'email' => $email,
-                            ]);
-
-                            $finalPilotId = (int) $pilotId;
-                            $success = 'Pilote modifié avec succès.';
-                        } else {
-                            $stmt = $pdo->prepare("
-                                INSERT INTO users (nom, prenom, email, password_hash, role)
-                                VALUES (:nom, :prenom, :email, :password_hash, 'pilote')
-                            ");
-                            $stmt->execute([
-                                'nom' => $nom,
-                                'prenom' => $prenom,
-                                'email' => $email,
-                                'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                            ]);
-
-                            $finalPilotId = (int) $pdo->lastInsertId();
-                            $success = 'Pilote créé avec succès.';
-                            $isEdit = true;
-                        }
-
-                        $deleteStmt = $pdo->prepare("
-                            DELETE FROM pilot_promotions
-                            WHERE pilot_user_id = :pilot_user_id
-                        ");
-                        $deleteStmt->execute([
-                            'pilot_user_id' => $finalPilotId,
-                        ]);
-
-                        $insertStmt = $pdo->prepare("
-                            INSERT INTO pilot_promotions (pilot_user_id, promotion_id)
-                            VALUES (:pilot_user_id, :promotion_id)
-                        ");
-
-                        foreach ($promotionIds as $promotionId) {
-                            $insertStmt->execute([
-                                'pilot_user_id' => $finalPilotId,
-                                'promotion_id' => $promotionId,
-                            ]);
-                        }
-
-                        $pdo->commit();
-
-                        $stmt = $pdo->prepare("
-                            SELECT id, nom, prenom, email
-                            FROM users
-                            WHERE id = :id
-                              AND role = 'pilote'
-                            LIMIT 1
-                        ");
-                        $stmt->execute(['id' => $finalPilotId]);
-                        $pilot = $stmt->fetch();
-                        $pilot['promotion_ids'] = PilotPromotionAccess::getAssignedPromotionIds($pdo, $finalPilotId);
-                    } catch (\Throwable $e) {
-                        if ($pdo->inTransaction()) {
-                            $pdo->rollBack();
-                        }
-
-                        $error = $isEdit
-                            ? 'Erreur lors de la modification du pilote.'
-                            : 'Erreur lors de la création du pilote.';
+                    if ($isEdit) {
+                        $success = 'Pilote modifié avec succès.';
+                    } else {
+                        $success = 'Pilote créé avec succès.';
+                        $pilotId = $finalPilotId;
+                        $isEdit = true;
                     }
+
+                    $reloadedPilot = $this->pilotRepository->findById($finalPilotId);
+                    if ($reloadedPilot) {
+                        $pilot = $reloadedPilot;
+                        $pilot['promotion_ids'] = PilotPromotionAccess::getAssignedPromotionIds($pdo, $finalPilotId);
+                    }
+                } catch (\Throwable $e) {
+                    $error = $isEdit
+                        ? 'Erreur lors de la modification du pilote.'
+                        : 'Erreur lors de la création du pilote.';
                 }
             }
         }
@@ -303,14 +168,7 @@ class AdminPilotController
 
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $pdo = Database::getConnection();
-
-        $stmt = $pdo->prepare("
-            DELETE FROM users
-            WHERE id = :id
-              AND role = 'pilote'
-        ");
-        $stmt->execute(['id' => $pilotId]);
+        $this->pilotRepository->delete($pilotId);
 
         header('Location: /admin-pilotes');
         exit;

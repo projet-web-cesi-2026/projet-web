@@ -5,15 +5,23 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\ApplicationRepository;
+use App\Repository\WishlistRepository;
 use Twig\Environment;
 
 class StudentDashboardController
 {
     private Environment $twig;
+    private ApplicationRepository $applicationRepository;
+    private WishlistRepository $wishlistRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+
+        $pdo = Database::getConnection();
+        $this->applicationRepository = new ApplicationRepository($pdo);
+        $this->wishlistRepository = new WishlistRepository($pdo);
     }
 
     public function index(): string
@@ -23,41 +31,11 @@ class StudentDashboardController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $userId = (int) $_SESSION['user']['id'];
 
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*)
-            FROM candidatures
-            WHERE student_user_id = :user_id
-        ");
-        $stmt->execute(['user_id' => $userId]);
-        $applicationsCount = (int) $stmt->fetchColumn();
-
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*)
-            FROM student_wishlist
-            WHERE user_id = :user_id
-        ");
-        $stmt->execute(['user_id' => $userId]);
-        $wishlistCount = (int) $stmt->fetchColumn();
-
-        $stmt = $pdo->prepare("
-            SELECT
-                c.id,
-                c.status,
-                c.created_at,
-                o.id AS offre_id,
-                o.titre,
-                o.entreprise
-            FROM candidatures c
-            INNER JOIN offres o ON o.id = c.offre_id
-            WHERE c.student_user_id = :user_id
-            ORDER BY c.created_at DESC
-            LIMIT 5
-        ");
-        $stmt->execute(['user_id' => $userId]);
-        $recentApplications = $stmt->fetchAll();
+        $applicationsCount = $this->applicationRepository->countApplicationsByStudentUserId($userId);
+        $wishlistCount = $this->wishlistRepository->countWishlistOffersByUserId($userId);
+        $recentApplications = $this->applicationRepository->findRecentApplicationsByStudentUserId($userId, 5);
 
         return $this->twig->render('student-dashboard.html.twig', [
             'site_name' => 'Help Me Stage',

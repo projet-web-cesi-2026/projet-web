@@ -5,97 +5,73 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
-use App\Security\Csrf;
+use App\Repository\CookieConsentRepository;
 
 class CookieConsentController
 {
+    private CookieConsentRepository $cookieConsentRepository;
+
+    public function __construct()
+    {
+        $this->cookieConsentRepository = new CookieConsentRepository(Database::getConnection());
+    }
+
     public function save(): void
     {
+        header('Content-Type: application/json');
+
         if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
             http_response_code(405);
-            exit('Méthode non autorisée.');
+            echo json_encode([
+                'success' => false,
+                'message' => 'Méthode non autorisée.',
+            ]);
+            return;
         }
 
-        Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
+        $rawBody = file_get_contents('php://input');
+        $data = json_decode($rawBody ?: '', true);
 
-        $action = (string) ($_POST['cookie_action'] ?? 'save_preferences');
-
-        $essential = 1;
-        $analytics = 0;
-        $marketing = 0;
-
-        if ($action === 'accept_all') {
-            $analytics = 1;
-            $marketing = 1;
-        } elseif ($action === 'reject_all') {
-            $analytics = 0;
-            $marketing = 0;
-        } else {
-            $analytics = isset($_POST['analytics']) ? 1 : 0;
-            $marketing = isset($_POST['marketing']) ? 1 : 0;
+        if (!is_array($data)) {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Payload invalide.',
+            ]);
+            return;
         }
 
-        $token = $_COOKIE['cookie_consent_token'] ?? bin2hex(random_bytes(32));
-        $userId = $_SESSION['user']['id'] ?? null;
+        $consentToken = trim((string) ($data['consent_token'] ?? ''));
+        $essential = true;
+        $analytics = (bool) ($data['analytics'] ?? false);
+        $marketing = (bool) ($data['marketing'] ?? false);
 
-        $https = (
-            (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-            || (($_SERVER['SERVER_PORT'] ?? null) === '443')
-        );
+        if ($consentToken === '') {
+            http_response_code(400);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Token de consentement manquant.',
+            ]);
+            return;
+        }
 
-        setcookie('cookie_consent_token', $token, [
-            'expires' => time() + (365 * 24 * 60 * 60),
-            'path' => '/',
-            'secure' => $https,
-            'httponly' => true,
-            'samesite' => 'Lax',
-        ]);
+        try {
+            $this->cookieConsentRepository->saveConsent(
+                $consentToken,
+                $essential,
+                $analytics,
+                $marketing
+            );
 
-        setcookie('cookie_consent_status', '1', [
-            'expires' => time() + (365 * 24 * 60 * 60),
-            'path' => '/',
-            'secure' => $https,
-            'httponly' => false,
-            'samesite' => 'Lax',
-        ]);
-
-        $pdo = Database::getConnection();
-
-        $stmt = $pdo->prepare("
-            INSERT INTO cookie_consents (
-                consent_token,
-                user_id,
-                essential,
-                analytics,
-                marketing
-            )
-            VALUES (
-                :consent_token,
-                :user_id,
-                :essential,
-                :analytics,
-                :marketing
-            )
-            ON DUPLICATE KEY UPDATE
-                user_id = VALUES(user_id),
-                essential = VALUES(essential),
-                analytics = VALUES(analytics),
-                marketing = VALUES(marketing),
-                updated_at = current_timestamp()
-        ");
-
-        $stmt->execute([
-            'consent_token' => $token,
-            'user_id' => $userId,
-            'essential' => $essential,
-            'analytics' => $analytics,
-            'marketing' => $marketing,
-        ]);
-
-        $_SESSION['cookie_consent_set'] = true;
-
-        $redirect = $_SERVER['HTTP_REFERER'] ?? '/';
-        header('Location: ' . $redirect);
-        exit;
+            echo json_encode([
+                'success' => true,
+            ]);
+        } catch (\Throwable $e) {
+            http_response_code(500);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Erreur lors de l’enregistrement du consentement.',
+            ]);
+        }
     }
 }

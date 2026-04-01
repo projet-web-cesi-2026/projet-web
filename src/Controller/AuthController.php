@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\UserRepository;
 use App\Security\Csrf;
 use Twig\Environment;
 
 class AuthController
 {
     private Environment $twig;
+    private UserRepository $userRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->userRepository = new UserRepository(Database::getConnection());
     }
 
     public function login(): string
@@ -32,17 +35,7 @@ class AuthController
             } elseif ($password === '') {
                 $error = 'Mot de passe requis.';
             } else {
-                $pdo = Database::getConnection();
-
-                $stmt = $pdo->prepare("
-                    SELECT id, nom, prenom, email, password_hash, role
-                    FROM users
-                    WHERE email = :email
-                    LIMIT 1
-                ");
-                $stmt->execute(['email' => $email]);
-
-                $user = $stmt->fetch();
+                $user = $this->userRepository->findLoginUserByEmail($email);
 
                 if ($user && password_verify($password, $user['password_hash'])) {
                     session_regenerate_id(true);

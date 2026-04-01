@@ -16,7 +16,7 @@ class LegalController
     public function index(): string
     {
         return $this->twig->render('legal.html.twig', [
-            'site_name' => 'Help Me Stage'
+            'site_name' => 'Help Me Stage',
         ]);
     }
 }

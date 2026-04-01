@@ -5,18 +5,20 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\StudentRepository;
 use App\Security\Csrf;
 use App\Support\PilotPromotionAccess;
-use PDO;
 use Twig\Environment;
 
 class PilotStudentController
 {
     private Environment $twig;
+    private StudentRepository $studentRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->studentRepository = new StudentRepository(Database::getConnection());
     }
 
     public function index(): string
@@ -60,59 +62,15 @@ class PilotStudentController
         if ($currentUserRole === 'pilote') {
             $promotions = PilotPromotionAccess::getPromotionsByIds($pdo, $allowedPromotionIds);
         } else {
-            $promotionsStmt = $pdo->query("
-                SELECT id, label, academic_year
-                FROM promotions
-                ORDER BY academic_year DESC, label ASC
-            ");
-            $promotions = $promotionsStmt->fetchAll();
+            $promotions = $this->studentRepository->getAllPromotions();
         }
 
-        $countSql = "
-            SELECT COUNT(*)
-            FROM users u
-            INNER JOIN student_profiles sp ON sp.user_id = u.id
-            WHERE u.role = 'etudiant'
-        ";
-
-        $countParams = [];
-
-        if ($currentUserRole === 'pilote') {
-            if ($allowedPromotionIds === []) {
-                $countSql .= " AND 1 = 0 ";
-            } else {
-                $placeholders = [];
-                foreach ($allowedPromotionIds as $index => $promotionId) {
-                    $key = ':allowed_promotion_' . $index;
-                    $placeholders[] = $key;
-                    $countParams['allowed_promotion_' . $index] = $promotionId;
-                }
-                $countSql .= " AND sp.promotion_id IN (" . implode(', ', $placeholders) . ")";
-            }
-        }
-
-        if ($selectedPromotionId !== null) {
-            $countSql .= " AND sp.promotion_id = :promotion_id";
-            $countParams['promotion_id'] = $selectedPromotionId;
-        }
-
-        if ($search !== '') {
-            $countSql .= "
-                AND (
-                    u.nom LIKE :search_nom
-                    OR u.prenom LIKE :search_prenom
-                    OR u.email LIKE :search_email
-                )
-            ";
-            $searchValue = '%' . $search . '%';
-            $countParams['search_nom'] = $searchValue;
-            $countParams['search_prenom'] = $searchValue;
-            $countParams['search_email'] = $searchValue;
-        }
-
-        $countStmt = $pdo->prepare($countSql);
-        $countStmt->execute($countParams);
-        $totalStudents = (int) $countStmt->fetchColumn();
+        $totalStudents = $this->studentRepository->countStudents(
+            $currentUserRole,
+            $allowedPromotionIds,
+            $selectedPromotionId,
+            $search
+        );
 
         $totalPages = max(1, (int) ceil($totalStudents / $perPage));
         if ($currentPage > $totalPages) {
@@ -121,75 +79,14 @@ class PilotStudentController
 
         $offset = ($currentPage - 1) * $perPage;
 
-        $sql = "
-            SELECT
-                u.id,
-                u.nom,
-                u.prenom,
-                u.email,
-                sp.formation,
-                sp.status,
-                sp.last_activity,
-                p.label AS promotion_label,
-                p.academic_year
-            FROM users u
-            INNER JOIN student_profiles sp ON sp.user_id = u.id
-            LEFT JOIN promotions p ON p.id = sp.promotion_id
-            WHERE u.role = 'etudiant'
-        ";
-
-        $params = [];
-
-        if ($currentUserRole === 'pilote') {
-            if ($allowedPromotionIds === []) {
-                $sql .= " AND 1 = 0 ";
-            } else {
-                $placeholders = [];
-                foreach ($allowedPromotionIds as $index => $promotionId) {
-                    $key = ':allowed_promotion_' . $index;
-                    $placeholders[] = $key;
-                    $params['allowed_promotion_' . $index] = $promotionId;
-                }
-                $sql .= " AND sp.promotion_id IN (" . implode(', ', $placeholders) . ")";
-            }
-        }
-
-        if ($selectedPromotionId !== null) {
-            $sql .= " AND sp.promotion_id = :promotion_id";
-            $params['promotion_id'] = $selectedPromotionId;
-        }
-
-        if ($search !== '') {
-            $sql .= "
-                AND (
-                    u.nom LIKE :search_nom
-                    OR u.prenom LIKE :search_prenom
-                    OR u.email LIKE :search_email
-                )
-            ";
-            $searchValue = '%' . $search . '%';
-            $params['search_nom'] = $searchValue;
-            $params['search_prenom'] = $searchValue;
-            $params['search_email'] = $searchValue;
-        }
-
-        $sql .= " ORDER BY p.academic_year DESC, p.label ASC, u.nom ASC, u.prenom ASC LIMIT :limit OFFSET :offset";
-
-        $stmt = $pdo->prepare($sql);
-
-        foreach ($params as $name => $value) {
-            if (in_array($name, ['search_nom', 'search_prenom', 'search_email'], true)) {
-                $stmt->bindValue(':' . $name, $value, PDO::PARAM_STR);
-            } else {
-                $stmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
-            }
-        }
-
-        $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-
-        $stmt->execute();
-        $students = $stmt->fetchAll();
+        $students = $this->studentRepository->findStudentsPaginated(
+            $currentUserRole,
+            $allowedPromotionIds,
+            $selectedPromotionId,
+            $search,
+            $perPage,
+            $offset
+        );
 
         return $this->twig->render('pilot-students.html.twig', [
             'students' => $students,
@@ -222,53 +119,14 @@ class PilotStudentController
             }
         }
 
-        $stmt = $pdo->prepare("
-            SELECT
-                u.id,
-                u.nom,
-                u.prenom,
-                u.email,
-                sp.formation,
-                sp.status,
-                sp.last_activity,
-                p.label AS promotion_label,
-                p.academic_year
-            FROM users u
-            INNER JOIN student_profiles sp ON sp.user_id = u.id
-            LEFT JOIN promotions p ON p.id = sp.promotion_id
-            WHERE u.id = :id
-              AND u.role = 'etudiant'
-            LIMIT 1
-        ");
-        $stmt->execute(['id' => $studentId]);
-        $student = $stmt->fetch();
+        $student = $this->studentRepository->findStudentById($studentId);
 
         if (!$student) {
             http_response_code(404);
             return 'Étudiant introuvable.';
         }
 
-        $stmt = $pdo->prepare("
-            SELECT
-                c.id,
-                c.status,
-                c.created_at,
-                c.lettre_motivation,
-                c.cv_filename,
-                o.id AS offre_id,
-                o.titre,
-                o.lieu,
-                o.remuneration,
-                o.duree_semaines,
-                COALESCE(e.nom, o.entreprise) AS entreprise_nom
-            FROM candidatures c
-            INNER JOIN offres o ON o.id = c.offre_id
-            LEFT JOIN entreprises e ON e.id = o.entreprise_id
-            WHERE c.student_user_id = :id
-            ORDER BY c.created_at DESC
-        ");
-        $stmt->execute(['id' => $studentId]);
-        $applications = $stmt->fetchAll();
+        $applications = $this->studentRepository->findApplicationsByStudentId($studentId);
 
         return $this->twig->render('pilot-student-detail.html.twig', [
             'student' => $student,
@@ -296,18 +154,11 @@ class PilotStudentController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $isEdit = $studentId !== null;
         $error = null;
         $success = null;
 
-        $promotionsStmt = $pdo->query("
-            SELECT id, label
-            FROM promotions
-            WHERE is_active = 1
-            ORDER BY label ASC
-        ");
-        $promotions = $promotionsStmt->fetchAll();
+        $promotions = $this->studentRepository->getActivePromotions();
 
         $student = [
             'id' => null,
@@ -321,24 +172,7 @@ class PilotStudentController
         ];
 
         if ($isEdit) {
-            $stmt = $pdo->prepare("
-                SELECT
-                    u.id,
-                    u.nom,
-                    u.prenom,
-                    u.email,
-                    sp.formation,
-                    sp.promotion_id,
-                    sp.status,
-                    sp.last_activity
-                FROM users u
-                INNER JOIN student_profiles sp ON sp.user_id = u.id
-                WHERE u.id = :id
-                  AND u.role = 'etudiant'
-                LIMIT 1
-            ");
-            $stmt->execute(['id' => $studentId]);
-            $existingStudent = $stmt->fetch();
+            $existingStudent = $this->studentRepository->findStudentForEdit($studentId);
 
             if (!$existingStudent) {
                 http_response_code(404);
@@ -379,142 +213,46 @@ class PilotStudentController
                 $error = 'Statut invalide.';
             } elseif (!$isEdit && mb_strlen($password) < 8) {
                 $error = 'Le mot de passe initial doit contenir au moins 8 caractères.';
+            } elseif (!$this->studentRepository->isActivePromotion($promotionId)) {
+                $error = 'Promotion invalide.';
+            } elseif ($this->studentRepository->emailExists($email, $isEdit ? $studentId : null)) {
+                $error = 'Cet email est déjà utilisé par un autre compte.';
             } else {
-                $promotionCheck = $pdo->prepare("
-                    SELECT id
-                    FROM promotions
-                    WHERE id = :id AND is_active = 1
-                    LIMIT 1
-                ");
-                $promotionCheck->execute(['id' => $promotionId]);
-
-                if (!$promotionCheck->fetchColumn()) {
-                    $error = 'Promotion invalide.';
-                } else {
+                try {
                     if ($isEdit) {
-                        $stmt = $pdo->prepare("
-                            SELECT id
-                            FROM users
-                            WHERE email = :email
-                              AND id != :id
-                            LIMIT 1
-                        ");
-                        $stmt->execute([
-                            'email' => $email,
-                            'id' => $studentId,
-                        ]);
+                        $this->studentRepository->updateStudent(
+                            $studentId,
+                            $nom,
+                            $prenom,
+                            $email,
+                            $formation,
+                            $promotionId,
+                            $status
+                        );
+
+                        $success = 'Profil étudiant mis à jour avec succès.';
                     } else {
-                        $stmt = $pdo->prepare("
-                            SELECT id
-                            FROM users
-                            WHERE email = :email
-                            LIMIT 1
-                        ");
-                        $stmt->execute([
-                            'email' => $email,
-                        ]);
+                        $studentId = $this->studentRepository->createStudent(
+                            $nom,
+                            $prenom,
+                            $email,
+                            $password,
+                            $formation,
+                            $promotionId,
+                            $status
+                        );
+
+                        $isEdit = true;
+                        $student['id'] = $studentId;
+                        $student['last_activity'] = date('Y-m-d');
+                        $success = 'Étudiant créé avec succès.';
                     }
 
-                    if ($stmt->fetch()) {
-                        $error = 'Cet email est déjà utilisé par un autre compte.';
-                    } else {
-                        try {
-                            $pdo->beginTransaction();
-
-                            if ($isEdit) {
-                                $stmt = $pdo->prepare("
-                                    UPDATE users
-                                    SET nom = :nom,
-                                        prenom = :prenom,
-                                        email = :email
-                                    WHERE id = :id
-                                      AND role = 'etudiant'
-                                ");
-                                $stmt->execute([
-                                    'id' => $studentId,
-                                    'nom' => $nom,
-                                    'prenom' => $prenom,
-                                    'email' => $email,
-                                ]);
-
-                                $stmt = $pdo->prepare("
-                                    UPDATE student_profiles
-                                    SET formation = :formation,
-                                        promotion_id = :promotion_id,
-                                        status = :status,
-                                        last_activity = CURDATE()
-                                    WHERE user_id = :user_id
-                                ");
-                                $stmt->execute([
-                                    'user_id' => $studentId,
-                                    'formation' => $formation,
-                                    'promotion_id' => $promotionId,
-                                    'status' => $status,
-                                ]);
-
-                                $success = 'Profil étudiant mis à jour avec succès.';
-                            } else {
-                                $stmt = $pdo->prepare("
-                                    INSERT INTO users (nom, prenom, email, password_hash, role)
-                                    VALUES (:nom, :prenom, :email, :password_hash, 'etudiant')
-                                ");
-                                $stmt->execute([
-                                    'nom' => $nom,
-                                    'prenom' => $prenom,
-                                    'email' => $email,
-                                    'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-                                ]);
-
-                                $newStudentId = (int) $pdo->lastInsertId();
-
-                                $stmt = $pdo->prepare("
-                                    INSERT INTO student_profiles (user_id, formation, promotion_id, status, last_activity)
-                                    VALUES (:user_id, :formation, :promotion_id, :status, CURDATE())
-                                ");
-                                $stmt->execute([
-                                    'user_id' => $newStudentId,
-                                    'formation' => $formation,
-                                    'promotion_id' => $promotionId,
-                                    'status' => $status,
-                                ]);
-
-                                $studentId = $newStudentId;
-                                $isEdit = true;
-                                $student['id'] = $newStudentId;
-                                $student['last_activity'] = date('Y-m-d');
-                                $success = 'Étudiant créé avec succès.';
-                            }
-
-                            $pdo->commit();
-
-                            $stmt = $pdo->prepare("
-                                SELECT
-                                    u.id,
-                                    u.nom,
-                                    u.prenom,
-                                    u.email,
-                                    sp.formation,
-                                    sp.promotion_id,
-                                    sp.status,
-                                    sp.last_activity
-                                FROM users u
-                                INNER JOIN student_profiles sp ON sp.user_id = u.id
-                                WHERE u.id = :id
-                                  AND u.role = 'etudiant'
-                                LIMIT 1
-                            ");
-                            $stmt->execute(['id' => $studentId]);
-                            $student = $stmt->fetch();
-                        } catch (\Throwable $e) {
-                            if ($pdo->inTransaction()) {
-                                $pdo->rollBack();
-                            }
-
-                            $error = $isEdit
-                                ? 'Erreur lors de la mise à jour du profil.'
-                                : 'Erreur lors de la création de l’étudiant.';
-                        }
-                    }
+                    $student = $this->studentRepository->findStudentForEdit($studentId);
+                } catch (\Throwable $e) {
+                    $error = $isEdit
+                        ? 'Erreur lors de la mise à jour du profil.'
+                        : 'Erreur lors de la création de l’étudiant.';
                 }
             }
         }
@@ -552,29 +290,8 @@ class PilotStudentController
         }
 
         try {
-            $pdo->beginTransaction();
-
-            $stmt = $pdo->prepare('DELETE FROM student_wishlist WHERE user_id = :id');
-            $stmt->execute(['id' => $studentId]);
-
-            $stmt = $pdo->prepare('DELETE FROM candidatures WHERE student_user_id = :id');
-            $stmt->execute(['id' => $studentId]);
-
-            $stmt = $pdo->prepare('DELETE FROM student_profiles WHERE user_id = :id');
-            $stmt->execute(['id' => $studentId]);
-
-            $stmt = $pdo->prepare("
-                DELETE FROM users
-                WHERE id = :id
-                  AND role = 'etudiant'
-            ");
-            $stmt->execute(['id' => $studentId]);
-
-            $pdo->commit();
+            $this->studentRepository->deleteStudent($studentId);
         } catch (\Throwable $e) {
-            if ($pdo->inTransaction()) {
-                $pdo->rollBack();
-            }
         }
 
         header('Location: /pilot-etudiants');

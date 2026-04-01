@@ -5,16 +5,19 @@ declare(strict_types=1);
 namespace App\Controller;
 
 use App\Database;
+use App\Repository\PromotionRepository;
 use App\Security\Csrf;
 use Twig\Environment;
 
 class AdminPromotionController
 {
     private Environment $twig;
+    private PromotionRepository $promotionRepository;
 
     public function __construct(Environment $twig)
     {
         $this->twig = $twig;
+        $this->promotionRepository = new PromotionRepository(Database::getConnection());
     }
 
     public function index(): string
@@ -24,48 +27,10 @@ class AdminPromotionController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $search = trim((string) ($_GET['q'] ?? ''));
 
-        $sql = "
-            SELECT
-                p.id,
-                p.label,
-                p.academic_year,
-                p.is_active,
-                COUNT(DISTINCT sp.user_id) AS students_count,
-                COUNT(DISTINCT pp.pilot_user_id) AS pilots_count
-            FROM promotions p
-            LEFT JOIN student_profiles sp ON sp.promotion_id = p.id
-            LEFT JOIN pilot_promotions pp ON pp.promotion_id = p.id
-            WHERE 1 = 1
-        ";
-
-        $params = [];
-
-        if ($search !== '') {
-            $sql .= "
-                AND (
-                    p.label LIKE :search_label
-                    OR p.academic_year LIKE :search_year
-                )
-            ";
-
-            $searchValue = '%' . $search . '%';
-            $params['search_label'] = $searchValue;
-            $params['search_year'] = $searchValue;
-        }
-
-        $sql .= "
-            GROUP BY p.id, p.label, p.academic_year, p.is_active
-            ORDER BY p.academic_year DESC, p.label ASC
-        ";
-
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($params);
-
         return $this->twig->render('admin-promotions.html.twig', [
-            'promotions' => $stmt->fetchAll(),
+            'promotions' => $this->promotionRepository->findAllWithStats($search),
             'search' => $search,
         ]);
     }
@@ -87,7 +52,6 @@ class AdminPromotionController
             exit;
         }
 
-        $pdo = Database::getConnection();
         $isEdit = $promotionId !== null;
         $error = null;
         $success = null;
@@ -100,14 +64,7 @@ class AdminPromotionController
         ];
 
         if ($isEdit) {
-            $stmt = $pdo->prepare("
-                SELECT id, label, academic_year, is_active
-                FROM promotions
-                WHERE id = :id
-                LIMIT 1
-            ");
-            $stmt->execute(['id' => $promotionId]);
-            $existingPromotion = $stmt->fetch();
+            $existingPromotion = $this->promotionRepository->findById($promotionId);
 
             if (!$existingPromotion) {
                 http_response_code(404);
@@ -132,74 +89,38 @@ class AdminPromotionController
                 $error = 'Merci de remplir tous les champs obligatoires.';
             } elseif (!preg_match('/^\d{4}-\d{4}$/', $academicYear)) {
                 $error = 'Le format de l’année doit être du type 2025-2026.';
+            } elseif ($this->promotionRepository->existsByLabelAndYear($label, $academicYear, $isEdit ? $promotionId : null)) {
+                $error = 'Cette promotion existe déjà pour cette année.';
             } else {
-                if ($isEdit) {
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM promotions
-                        WHERE label = :label
-                          AND academic_year = :academic_year
-                          AND id != :id
-                        LIMIT 1
-                    ");
-                    $stmt->execute([
-                        'label' => $label,
-                        'academic_year' => $academicYear,
-                        'id' => $promotionId,
-                    ]);
-                } else {
-                    $stmt = $pdo->prepare("
-                        SELECT id
-                        FROM promotions
-                        WHERE label = :label
-                          AND academic_year = :academic_year
-                        LIMIT 1
-                    ");
-                    $stmt->execute([
-                        'label' => $label,
-                        'academic_year' => $academicYear,
-                    ]);
-                }
-
-                if ($stmt->fetch()) {
-                    $error = 'Cette promotion existe déjà pour cette année.';
-                } else {
+                try {
                     if ($isEdit) {
-                        $stmt = $pdo->prepare("
-                            UPDATE promotions
-                            SET label = :label,
-                                academic_year = :academic_year,
-                                is_active = :is_active
-                            WHERE id = :id
-                        ");
-                        $stmt->execute([
-                            'id' => $promotionId,
-                            'label' => $label,
-                            'academic_year' => $academicYear,
-                            'is_active' => $isActive,
-                        ]);
+                        $this->promotionRepository->update(
+                            $promotionId,
+                            $label,
+                            $academicYear,
+                            $isActive
+                        );
 
                         $success = 'Promotion modifiée avec succès.';
                     } else {
-                        $stmt = $pdo->prepare("
-                            INSERT INTO promotions (label, academic_year, is_active)
-                            VALUES (:label, :academic_year, :is_active)
-                        ");
-                        $stmt->execute([
-                            'label' => $label,
-                            'academic_year' => $academicYear,
-                            'is_active' => $isActive,
-                        ]);
+                        $promotionId = $this->promotionRepository->create(
+                            $label,
+                            $academicYear,
+                            $isActive
+                        );
 
                         $success = 'Promotion créée avec succès.';
-                        $promotion = [
-                            'id' => (int) $pdo->lastInsertId(),
-                            'label' => $label,
-                            'academic_year' => $academicYear,
-                            'is_active' => $isActive,
-                        ];
                         $isEdit = true;
                     }
+
+                    $reloadedPromotion = $this->promotionRepository->findById($promotionId);
+                    if ($reloadedPromotion) {
+                        $promotion = $reloadedPromotion;
+                    }
+                } catch (\Throwable $e) {
+                    $error = $isEdit
+                        ? 'Erreur lors de la modification de la promotion.'
+                        : 'Erreur lors de la création de la promotion.';
                 }
             }
         }
@@ -221,13 +142,7 @@ class AdminPromotionController
 
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $pdo = Database::getConnection();
-
-        $stmt = $pdo->prepare("
-            DELETE FROM promotions
-            WHERE id = :id
-        ");
-        $stmt->execute(['id' => $promotionId]);
+        $this->promotionRepository->delete($promotionId);
 
         header('Location: /admin-promotions');
         exit;

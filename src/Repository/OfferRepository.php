@@ -1,0 +1,636 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Repository;
+
+use PDO;
+
+class OfferRepository
+{
+    public function __construct(private PDO $pdo)
+    {
+    }
+
+    public function countOffers(string $search): int
+    {
+        $sql = "
+            SELECT COUNT(*)
+            FROM offres o
+            LEFT JOIN entreprises e ON e.id = o.entreprise_id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if ($search !== '') {
+            $sql .= "
+                AND (
+                    o.titre LIKE :search_title
+                    OR o.lieu LIKE :search_location
+                    OR o.entreprise LIKE :search_company
+                    OR e.nom LIKE :search_company_name
+                )
+            ";
+
+            $searchValue = '%' . $search . '%';
+            $params['search_title'] = $searchValue;
+            $params['search_location'] = $searchValue;
+            $params['search_company'] = $searchValue;
+            $params['search_company_name'] = $searchValue;
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    public function findOffersPaginated(string $search, int $limit, int $offset): array
+    {
+        $sql = "
+            SELECT
+                o.id,
+                o.titre,
+                o.lieu,
+                o.remuneration,
+                o.duree_semaines,
+                o.created_at,
+                COALESCE(e.nom, o.entreprise) AS entreprise_nom
+            FROM offres o
+            LEFT JOIN entreprises e ON e.id = o.entreprise_id
+            WHERE 1 = 1
+        ";
+
+        $params = [];
+
+        if ($search !== '') {
+            $sql .= "
+                AND (
+                    o.titre LIKE :search_title
+                    OR o.lieu LIKE :search_location
+                    OR o.entreprise LIKE :search_company
+                    OR e.nom LIKE :search_company_name
+                )
+            ";
+
+            $searchValue = '%' . $search . '%';
+            $params['search_title'] = $searchValue;
+            $params['search_location'] = $searchValue;
+            $params['search_company'] = $searchValue;
+            $params['search_company_name'] = $searchValue;
+        }
+
+        $sql .= "
+            ORDER BY o.created_at DESC, o.id DESC
+            LIMIT :limit OFFSET :offset
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value, PDO::PARAM_STR);
+        }
+
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll();
+    }
+
+    public function getOfferSuggestions(): array
+    {
+        $stmt = $this->pdo->query("
+            SELECT suggestion
+            FROM (
+                SELECT TRIM(o.titre) AS suggestion
+                FROM offres o
+                WHERE o.titre IS NOT NULL AND TRIM(o.titre) <> ''
+
+                UNION
+
+                SELECT TRIM(COALESCE(e.nom, o.entreprise)) AS suggestion
+                FROM offres o
+                LEFT JOIN entreprises e ON e.id = o.entreprise_id
+                WHERE COALESCE(e.nom, o.entreprise) IS NOT NULL
+                  AND TRIM(COALESCE(e.nom, o.entreprise)) <> ''
+
+                UNION
+
+                SELECT TRIM(o.lieu) AS suggestion
+                FROM offres o
+                WHERE o.lieu IS NOT NULL AND TRIM(o.lieu) <> ''
+            ) AS suggestions
+            ORDER BY suggestion ASC
+        ");
+
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    }
+
+    public function getAllCompanies(): array
+    {
+        $stmt = $this->pdo->query("
+            SELECT id, nom
+            FROM entreprises
+            ORDER BY nom ASC
+        ");
+
+        return $stmt->fetchAll();
+    }
+
+    public function getAllSkills(): array
+    {
+        $stmt = $this->pdo->query("
+            SELECT id, nom
+            FROM competences
+            ORDER BY nom ASC
+        ");
+
+        return $stmt->fetchAll();
+    }
+
+    public function findOfferById(int $offerId): array|false
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT
+                o.id,
+                o.titre,
+                COALESCE(e.nom, o.entreprise) AS entreprise_nom,
+                o.lieu,
+                o.remuneration,
+                o.duree_semaines,
+                o.description
+            FROM offres o
+            LEFT JOIN entreprises e ON e.id = o.entreprise_id
+            WHERE o.id = :id
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $offerId]);
+
+        return $stmt->fetch();
+    }
+
+    public function getOfferSkillIds(int $offerId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT competence_id
+            FROM offre_competence
+            WHERE offre_id = :offre_id
+        ");
+        $stmt->execute(['offre_id' => $offerId]);
+
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    public function findCompanyByName(string $companyName): array|false
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT id, nom
+            FROM entreprises
+            WHERE nom = :nom
+            LIMIT 1
+        ");
+        $stmt->execute(['nom' => $companyName]);
+
+        return $stmt->fetch();
+    }
+
+    public function getAllSkillIds(): array
+    {
+        $stmt = $this->pdo->query("SELECT id FROM competences");
+
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    }
+
+    public function saveOffer(
+        ?int $offerId,
+        string $titre,
+        array $company,
+        string $lieu,
+        float $remuneration,
+        int $dureeSemaines,
+        string $description,
+        array $competenceIds,
+        array $newSkillNames
+    ): int {
+        $isEdit = $offerId !== null;
+
+        $this->pdo->beginTransaction();
+
+        try {
+            if ($isEdit) {
+                $stmt = $this->pdo->prepare("
+                    UPDATE offres
+                    SET
+                        titre = :titre,
+                        entreprise_id = :entreprise_id,
+                        entreprise = :entreprise_nom,
+                        lieu = :lieu,
+                        remuneration = :remuneration,
+                        duree_semaines = :duree_semaines,
+                        description = :description
+                    WHERE id = :id
+                ");
+                $stmt->execute([
+                    'id' => $offerId,
+                    'titre' => $titre,
+                    'entreprise_id' => (int) $company['id'],
+                    'entreprise_nom' => $company['nom'],
+                    'lieu' => $lieu,
+                    'remuneration' => $remuneration,
+                    'duree_semaines' => $dureeSemaines,
+                    'description' => $description,
+                ]);
+
+                $currentOfferId = $offerId;
+            } else {
+                $stmt = $this->pdo->prepare("
+                    INSERT INTO offres (
+                        titre,
+                        entreprise_id,
+                        entreprise,
+                        lieu,
+                        remuneration,
+                        duree_semaines,
+                        description
+                    )
+                    VALUES (
+                        :titre,
+                        :entreprise_id,
+                        :entreprise_nom,
+                        :lieu,
+                        :remuneration,
+                        :duree_semaines,
+                        :description
+                    )
+                ");
+                $stmt->execute([
+                    'titre' => $titre,
+                    'entreprise_id' => (int) $company['id'],
+                    'entreprise_nom' => $company['nom'],
+                    'lieu' => $lieu,
+                    'remuneration' => $remuneration,
+                    'duree_semaines' => $dureeSemaines,
+                    'description' => $description,
+                ]);
+
+                $currentOfferId = (int) $this->pdo->lastInsertId();
+            }
+
+            $createdOrFoundSkillIds = [];
+
+            foreach ($newSkillNames as $skillName) {
+                $findSkillStmt = $this->pdo->prepare("
+                    SELECT id
+                    FROM competences
+                    WHERE LOWER(nom) = LOWER(:nom)
+                    LIMIT 1
+                ");
+                $findSkillStmt->execute(['nom' => $skillName]);
+                $existingSkillId = $findSkillStmt->fetchColumn();
+
+                if ($existingSkillId !== false) {
+                    $createdOrFoundSkillIds[] = (int) $existingSkillId;
+                } else {
+                    $insertSkillStmt = $this->pdo->prepare("
+                        INSERT INTO competences (nom)
+                        VALUES (:nom)
+                    ");
+                    $insertSkillStmt->execute(['nom' => $skillName]);
+                    $createdOrFoundSkillIds[] = (int) $this->pdo->lastInsertId();
+                }
+            }
+
+            $allSkillIds = array_values(array_unique(array_merge($competenceIds, $createdOrFoundSkillIds)));
+
+            $deleteSkillsStmt = $this->pdo->prepare("
+                DELETE FROM offre_competence
+                WHERE offre_id = :offre_id
+            ");
+            $deleteSkillsStmt->execute([
+                'offre_id' => $currentOfferId,
+            ]);
+
+            $insertSkillLinkStmt = $this->pdo->prepare("
+                INSERT INTO offre_competence (offre_id, competence_id)
+                VALUES (:offre_id, :competence_id)
+            ");
+
+            foreach ($allSkillIds as $competenceId) {
+                $insertSkillLinkStmt->execute([
+                    'offre_id' => $currentOfferId,
+                    'competence_id' => $competenceId,
+                ]);
+            }
+
+            $this->pdo->commit();
+
+            return $currentOfferId;
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    public function deleteOffer(int $offerId): void
+    {
+        $this->pdo->beginTransaction();
+
+        try {
+            $stmt = $this->pdo->prepare("DELETE FROM student_wishlist WHERE offre_id = :id");
+            $stmt->execute(['id' => $offerId]);
+
+            $stmt = $this->pdo->prepare("DELETE FROM candidatures WHERE offre_id = :id");
+            $stmt->execute(['id' => $offerId]);
+
+            $stmt = $this->pdo->prepare("DELETE FROM offre_competence WHERE offre_id = :id");
+            $stmt->execute(['id' => $offerId]);
+
+            $stmt = $this->pdo->prepare("DELETE FROM offres WHERE id = :id");
+            $stmt->execute(['id' => $offerId]);
+
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+
+            throw $e;
+        }
+    }
+
+    public function countPublicOffers(
+        string $searchQuery,
+        string $skillsQuery,
+        string $locationQuery,
+        string $durationQuery,
+        string $salaryQuery
+    ): int {
+        [$whereSql, $params] = $this->buildPublicFilters(
+            $searchQuery,
+            $skillsQuery,
+            $locationQuery,
+            $durationQuery,
+            $salaryQuery
+        );
+
+        $sql = "
+            SELECT COUNT(DISTINCT o.id)
+            FROM offres o
+            $whereSql
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            if (is_int($value)) {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(':' . $key, $value);
+            }
+        }
+
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    public function findPublicOffersPaginated(
+        string $searchQuery,
+        string $skillsQuery,
+        string $locationQuery,
+        string $durationQuery,
+        string $salaryQuery,
+        string $sortQuery,
+        int $limit,
+        int $offset
+    ): array {
+        [$whereSql, $params] = $this->buildPublicFilters(
+            $searchQuery,
+            $skillsQuery,
+            $locationQuery,
+            $durationQuery,
+            $salaryQuery
+        );
+
+        $orderBy = 'o.created_at DESC';
+        if ($sortQuery === 'salary_asc') {
+            $orderBy = 'o.remuneration ASC';
+        } elseif ($sortQuery === 'salary_desc') {
+            $orderBy = 'o.remuneration DESC';
+        } elseif ($sortQuery === 'duration_asc') {
+            $orderBy = 'o.duree_semaines ASC';
+        } elseif ($sortQuery === 'duration_desc') {
+            $orderBy = 'o.duree_semaines DESC';
+        }
+
+        $sql = "
+            SELECT
+                o.id,
+                o.titre,
+                o.entreprise,
+                o.lieu,
+                o.duree_semaines,
+                o.remuneration,
+                o.description,
+                o.created_at,
+                COALESCE(o.entreprise, 'Entreprise non définie') AS entreprise_nom,
+                GROUP_CONCAT(DISTINCT c.nom ORDER BY c.nom SEPARATOR '||') AS skills_concat
+            FROM offres o
+            LEFT JOIN offre_competence oc ON oc.offre_id = o.id
+            LEFT JOIN competences c ON c.id = oc.competence_id
+            $whereSql
+            GROUP BY
+                o.id,
+                o.titre,
+                o.entreprise,
+                o.lieu,
+                o.duree_semaines,
+                o.remuneration,
+                o.description,
+                o.created_at
+            ORDER BY $orderBy
+            LIMIT :limit OFFSET :offset
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+
+        foreach ($params as $key => $value) {
+            if (is_int($value)) {
+                $stmt->bindValue(':' . $key, $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(':' . $key, $value);
+            }
+        }
+
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+
+        $stmt->execute();
+        $offers = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($offers as &$offer) {
+            $offer['skills'] = [];
+
+            if (!empty($offer['skills_concat'])) {
+                $skillNames = explode('||', (string) $offer['skills_concat']);
+                foreach ($skillNames as $skillName) {
+                    $skillName = trim($skillName);
+                    if ($skillName !== '') {
+                        $offer['skills'][] = ['nom' => $skillName];
+                    }
+                }
+            }
+        }
+        unset($offer);
+
+        return $offers;
+    }
+
+    public function findPublicOfferDetailById(int $offerId): array|false
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT
+                o.id,
+                o.titre,
+                o.entreprise,
+                o.lieu,
+                o.duree_semaines,
+                o.remuneration,
+                o.description,
+                o.created_at,
+                o.entreprise_id,
+                e.nom AS entreprise_nom,
+                e.siret AS entreprise_siret,
+                e.secteur AS entreprise_secteur,
+                e.ville AS entreprise_ville,
+                e.site_web AS entreprise_site_web,
+                e.note AS entreprise_note,
+                e.commentaire AS entreprise_commentaire
+            FROM offres o
+            LEFT JOIN entreprises e ON e.id = o.entreprise_id
+            WHERE o.id = :id
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $offerId]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    }
+
+    public function findOfferSkillsByOfferId(int $offerId): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT c.nom
+            FROM offre_competence oc
+            INNER JOIN competences c ON c.id = oc.competence_id
+            WHERE oc.offre_id = :offre_id
+            ORDER BY c.nom ASC
+        ");
+        $stmt->execute(['offre_id' => $offerId]);
+
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    public function isOfferInWishlist(int $userId, int $offerId): bool
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT 1
+            FROM student_wishlist
+            WHERE user_id = :user_id
+              AND offre_id = :offre_id
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'user_id' => $userId,
+            'offre_id' => $offerId,
+        ]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    public function hasStudentAppliedToOffer(int $userId, int $offerId): bool
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT 1
+            FROM candidatures
+            WHERE student_user_id = :user_id
+              AND offre_id = :offre_id
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'user_id' => $userId,
+            'offre_id' => $offerId,
+        ]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    private function buildPublicFilters(
+        string $searchQuery,
+        string $skillsQuery,
+        string $locationQuery,
+        string $durationQuery,
+        string $salaryQuery
+    ): array {
+        $where = [];
+        $params = [];
+
+        if ($searchQuery !== '') {
+            $where[] = '(
+                o.titre LIKE :search_title
+                OR o.entreprise LIKE :search_company
+                OR o.description LIKE :search_description
+            )';
+
+            $searchValue = '%' . $searchQuery . '%';
+            $params['search_title'] = $searchValue;
+            $params['search_company'] = $searchValue;
+            $params['search_description'] = $searchValue;
+        }
+
+        if ($locationQuery !== '') {
+            $where[] = 'o.lieu LIKE :location';
+            $params['location'] = '%' . $locationQuery . '%';
+        }
+
+        if ($durationQuery !== '' && ctype_digit($durationQuery)) {
+            $where[] = 'o.duree_semaines <= :duration';
+            $params['duration'] = (int) $durationQuery;
+        }
+
+        if ($salaryQuery !== '' && is_numeric($salaryQuery)) {
+            $where[] = 'o.remuneration >= :salary';
+            $params['salary'] = (float) $salaryQuery;
+        }
+
+        if ($skillsQuery !== '') {
+            $skillWords = array_filter(array_map('trim', explode(',', $skillsQuery)));
+
+            if ($skillWords !== []) {
+                $skillConditions = [];
+
+                foreach ($skillWords as $index => $skillWord) {
+                    $paramName = 'skill_' . $index;
+                    $skillConditions[] = "EXISTS (
+                        SELECT 1
+                        FROM offre_competence oc_filter
+                        INNER JOIN competences c_filter ON c_filter.id = oc_filter.competence_id
+                        WHERE oc_filter.offre_id = o.id
+                          AND c_filter.nom LIKE :$paramName
+                    )";
+                    $params[$paramName] = '%' . $skillWord . '%';
+                }
+
+                $where[] = '(' . implode(' AND ', $skillConditions) . ')';
+            }
+        }
+
+        $whereSql = $where ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        return [$whereSql, $params];
+    }
+}
