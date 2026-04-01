@@ -67,6 +67,7 @@ class AdminCompanyController
         $company = [
             'id' => null,
             'nom' => '',
+            'siret' => '',
             'secteur' => '',
             'ville' => '',
             'site_web' => '',
@@ -89,6 +90,7 @@ class AdminCompanyController
             Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
             $nom = trim((string) ($_POST['nom'] ?? ''));
+            $siret = preg_replace('/\D/', '', (string) ($_POST['siret'] ?? ''));
             $secteur = trim((string) ($_POST['secteur'] ?? ''));
             $ville = trim((string) ($_POST['ville'] ?? ''));
             $siteWeb = trim((string) ($_POST['site_web'] ?? ''));
@@ -106,6 +108,7 @@ class AdminCompanyController
             }
 
             $company['nom'] = $nom;
+            $company['siret'] = $siret;
             $company['secteur'] = $secteur;
             $company['ville'] = $ville;
             $company['site_web'] = $siteWeb;
@@ -114,6 +117,10 @@ class AdminCompanyController
 
             if ($error === null && $nom === '') {
                 $error = "Le nom de l'entreprise est obligatoire.";
+            }
+
+            if ($error === null && $siret !== '' && strlen($siret) !== 14) {
+                $error = 'Le SIRET doit contenir 14 chiffres.';
             }
 
             if ($error === null && $siteWeb !== '' && !filter_var($siteWeb, FILTER_VALIDATE_URL)) {
@@ -126,6 +133,7 @@ class AdminCompanyController
 
             if ($error === null) {
                 try {
+                    $siretValue = $siret !== '' ? $siret : null;
                     $secteurValue = $secteur !== '' ? $secteur : null;
                     $villeValue = $ville !== '' ? $ville : null;
                     $siteWebValue = $siteWeb !== '' ? $siteWeb : null;
@@ -135,6 +143,7 @@ class AdminCompanyController
                         $this->companyRepository->update(
                             $companyId,
                             $nom,
+                            $siretValue,
                             $secteurValue,
                             $villeValue,
                             $siteWebValue,
@@ -146,6 +155,7 @@ class AdminCompanyController
                     } else {
                         $companyId = $this->companyRepository->create(
                             $nom,
+                            $siretValue,
                             $secteurValue,
                             $villeValue,
                             $siteWebValue,

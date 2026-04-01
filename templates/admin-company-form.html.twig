@@ -47,6 +47,9 @@
                 <label for="nom">Nom de l'entreprise *</label>
                 <input id="nom" type="text" name="nom" value="{{ company.nom }}" required maxlength="150">
 
+                <label for="siret">SIRET</label>
+                <input id="siret" type="text" name="siret" value="{{ company.siret }}" maxlength="14" inputmode="numeric" pattern="[0-9]{14}">
+
                 <label for="secteur">Secteur</label>
                 <input id="secteur" type="text" name="secteur" value="{{ company.secteur }}" maxlength="150">
 
@@ -56,8 +59,6 @@
                 <label for="site_web">Site web</label>
                 <input id="site_web" type="url" name="site_web" value="{{ company.site_web }}" maxlength="255">
 
-                {# ===== SYSTEME D ETOILES ===== #}
-                {# On arrondit la note existante pour obtenir un entier entre 0 et 5 #}
                 {% set current_note = company.note ? company.note|round(0, 'floor') : 0 %}
 
                 <label>Evaluation de l'entreprise</label>
@@ -86,7 +87,6 @@
                 <p class="star-hint">
                     Cliquez sur une etoile pour noter. Cliquez a nouveau sur la meme etoile pour retirer la note.
                 </p>
-                {# ===== FIN DU SYSTEME D ETOILES ===== #}
 
                 <label for="commentaire">Commentaire / Avis</label>
                 <textarea id="commentaire" name="commentaire" rows="5" placeholder="Laissez un commentaire sur cette entreprise...">{{ company.commentaire }}</textarea>

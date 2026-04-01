@@ -62,6 +62,7 @@ class CompanyRepository
             SELECT
                 id,
                 nom,
+                siret,
                 secteur,
                 ville,
                 site_web,
@@ -107,6 +108,7 @@ class CompanyRepository
 
     public function create(
         string $nom,
+        ?string $siret,
         ?string $secteur,
         ?string $ville,
         ?string $siteWeb,
@@ -114,11 +116,12 @@ class CompanyRepository
         ?string $commentaire
     ): int {
         $stmt = $this->pdo->prepare("
-            INSERT INTO entreprises (nom, secteur, ville, site_web, note, commentaire)
-            VALUES (:nom, :secteur, :ville, :site_web, :note, :commentaire)
+            INSERT INTO entreprises (nom, siret, secteur, ville, site_web, note, commentaire)
+            VALUES (:nom, :siret, :secteur, :ville, :site_web, :note, :commentaire)
         ");
         $stmt->execute([
             'nom' => $nom,
+            'siret' => $siret,
             'secteur' => $secteur,
             'ville' => $ville,
             'site_web' => $siteWeb,
@@ -132,6 +135,7 @@ class CompanyRepository
     public function update(
         int $companyId,
         string $nom,
+        ?string $siret,
         ?string $secteur,
         ?string $ville,
         ?string $siteWeb,
@@ -141,6 +145,7 @@ class CompanyRepository
         $stmt = $this->pdo->prepare("
             UPDATE entreprises
             SET nom = :nom,
+                siret = :siret,
                 secteur = :secteur,
                 ville = :ville,
                 site_web = :site_web,
@@ -151,6 +156,7 @@ class CompanyRepository
         $stmt->execute([
             'id' => $companyId,
             'nom' => $nom,
+            'siret' => $siret,
             'secteur' => $secteur,
             'ville' => $ville,
             'site_web' => $siteWeb,
