@@ -120,12 +120,19 @@ body {
     border-bottom: none;
 }
 
+/* 🔥 BOUTON CORRIGÉ */
 .cta-button {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
     background: #f4b400;
     color: black;
-    padding: 12px 22px;
-    border-radius: 10px;
+
+    height: 48px;
+    padding: 0 24px;
+
+    border-radius: 12px;
     text-decoration: none;
     font-weight: 600;
     border: none;
