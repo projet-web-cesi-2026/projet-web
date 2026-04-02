@@ -25,7 +25,7 @@ class WishlistController
         $this->assertStudent();
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $userId = (int) $_SESSION['user']['id'];
+        $userId = (int) ($_SESSION['user']['id'] ?? 0);
 
         if (!$this->wishlistRepository->offerExists($offerId)) {
             http_response_code(404);
@@ -43,11 +43,11 @@ class WishlistController
         $this->assertStudent();
         Csrf::requireValidToken($_POST['_csrf_token'] ?? null);
 
-        $userId = (int) $_SESSION['user']['id'];
+        $userId = (int) ($_SESSION['user']['id'] ?? 0);
 
         $this->wishlistRepository->removeOfferFromWishlist($userId, $offerId);
 
-        header('Location: /offres/' . $offerId);
+        header('Location: /etudiant-wishlist');
         exit;
     }
 

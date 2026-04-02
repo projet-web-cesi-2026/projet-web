@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Database;
 use App\Repository\WishlistRepository;
+use App\Security\Csrf;
 use Twig\Environment;
 
 class StudentWishlistController
@@ -31,12 +32,14 @@ class StudentWishlistController
             return 'Accès refusé.';
         }
 
-        $userId = (int) $_SESSION['user']['id'];
+        $userId = (int) ($_SESSION['user']['id'] ?? 0);
 
         $wishlistOffers = $this->wishlistRepository->findWishlistOffersByUserId($userId);
 
         return $this->twig->render('student-wishlist.html.twig', [
             'wishlistOffers' => $wishlistOffers,
+            'wishlistCount' => count($wishlistOffers),
+            'csrf_token' => Csrf::token(),
         ]);
     }
 }

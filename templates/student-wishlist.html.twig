@@ -16,15 +16,22 @@
             </div>
 
             <div class="student-list">
-                {% for offer in offers %}
+                {% for offer in wishlistOffers %}
                     <article class="student-row">
                         <div class="student-main">
                             <h3>{{ offer.titre }}</h3>
-                            <p>{{ offer.entreprise }} • {{ offer.lieu }}</p>
+                            <p>{{ offer.entreprise_nom }} • {{ offer.lieu ?: 'Lieu non défini' }}</p>
                             <small>{{ offer.duree_semaines }} semaines • {{ offer.remuneration }} €</small>
                         </div>
 
-                        <a href="/offres/{{ offer.id }}" class="student-link">Voir l'offre</a>
+                        <div class="wishlist-actions">
+                            <a href="/offres/{{ offer.id }}" class="student-link">Voir l'offre</a>
+
+                            <form method="POST" action="/offres/{{ offer.id }}/wishlist/supprimer">
+                                <input type="hidden" name="_csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="wishlist-remove" aria-label="Retirer de la wishlist">✕</button>
+                            </form>
+                        </div>
                     </article>
                 {% else %}
                     <p class="empty-state">Aucune offre dans votre wishlist.</p>

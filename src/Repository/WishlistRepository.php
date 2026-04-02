@@ -56,18 +56,20 @@ class WishlistRepository
             SELECT
                 o.id,
                 o.titre,
-                o.entreprise,
+                COALESCE(e.nom, o.entreprise, 'Entreprise non définie') AS entreprise_nom,
                 o.lieu,
                 o.duree_semaines,
-                o.remuneration
+                o.remuneration,
+                sw.created_at
             FROM student_wishlist sw
             INNER JOIN offres o ON o.id = sw.offre_id
+            LEFT JOIN entreprises e ON e.id = o.entreprise_id
             WHERE sw.user_id = :user_id
-            ORDER BY sw.created_at DESC
+            ORDER BY sw.created_at DESC, o.id DESC
         ");
         $stmt->execute(['user_id' => $userId]);
 
-        return $stmt->fetchAll();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     public function countWishlistOffersByUserId(int $userId): int
