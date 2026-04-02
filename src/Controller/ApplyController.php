@@ -69,9 +69,10 @@ class ApplyController
                         if ($mimeType !== 'application/pdf') {
                             $error = 'Le fichier doit être un PDF.';
                         } else {
-                            $uploadDir = __DIR__ . '/../../public/uploads/cv/';
+                            $uploadDir = __DIR__ . '/../../storage/cv/';
+
                             if (!is_dir($uploadDir)) {
-                                mkdir($uploadDir, 0777, true);
+                                mkdir($uploadDir, 0775, true);
                             }
 
                             $prenom = (string) ($_SESSION['user']['prenom'] ?? 'etudiant');
