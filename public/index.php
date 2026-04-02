@@ -24,6 +24,7 @@ use App\Controller\PrivacyController;
 use App\Controller\StudentApplicationsController;
 use App\Controller\StudentDashboardController;
 use App\Controller\StudentWishlistController;
+use App\Controller\StatisticsController;
 use App\Controller\WishlistController;
 
 use App\Controller\AdminCompanyController;
@@ -277,6 +278,10 @@ switch ($uri) {
 
     case '/etudiant-wishlist':
         echo (new StudentWishlistController($twig))->index();
+        exit;
+
+    case '/statistiques-offres':
+        echo (new StatisticsController($twig))->index();
         exit;
 
     case '/espace-pilote':

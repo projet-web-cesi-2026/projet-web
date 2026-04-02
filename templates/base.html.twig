@@ -40,18 +40,19 @@
 
     </div>
 
-    <!-- MENU BURGER CLEAN -->
     <nav class="mobile-menu" id="mobile-menu">
         {% if current_user %}
 
             {% if current_user.role == 'administrateur' %}
                 <a href="/espace-admin">Mon espace administrateur</a>
                 <a href="/offres">Voir les offres</a>
+                <a href="/statistiques-offres">Statistiques</a>
                 <a href="/logout">Déconnexion</a>
 
             {% elseif current_user.role == 'pilote' %}
                 <a href="/espace-pilote">Mon espace pilote</a>
                 <a href="/offres">Voir les offres</a>
+                <a href="/statistiques-offres">Statistiques</a>
                 <a href="/logout">Déconnexion</a>
 
             {% elseif current_user.role == 'etudiant' %}
@@ -59,6 +60,7 @@
                 <a href="/etudiant-candidatures">Mes candidatures</a>
                 <a href="/etudiant-wishlist">Ma wishlist</a>
                 <a href="/offres">Voir les offres</a>
+                <a href="/statistiques-offres">Statistiques</a>
                 <a href="/logout">Déconnexion</a>
             {% endif %}
 
@@ -74,7 +76,6 @@
     {% block body %}{% endblock %}
 </main>
 
-<!-- FOOTER (avec contact + légal) -->
 <footer class="site-footer">
     <div class="container footer-content">
 

@@ -1,0 +1,239 @@
+.stats-page {
+    padding: 48px 0 72px;
+}
+
+.stats-container {
+    width: min(1180px, calc(100% - 40px));
+    margin: 0 auto;
+}
+
+.stats-header {
+    margin-bottom: 28px;
+}
+
+.stats-kicker {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: #fff7d6;
+    color: #8a6a00;
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.stats-header h1 {
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    line-height: 1.1;
+    margin-bottom: 10px;
+    color: #111827;
+}
+
+.stats-header p {
+    max-width: 720px;
+    color: #6b7280;
+    font-size: 1rem;
+}
+
+.stats-carousel-section {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.stats-carousel {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 100%;
+    gap: 0;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    width: 100%;
+}
+
+.stats-carousel::-webkit-scrollbar {
+    display: none;
+}
+
+.stats-card {
+    scroll-snap-align: start;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 24px;
+    padding: 28px;
+    min-height: 430px;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
+    display: flex;
+    flex-direction: column;
+}
+
+.stats-card-highlight {
+    background: linear-gradient(135deg, #ffffff 0%, #fffdf4 100%);
+}
+
+.stats-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.stats-card-label {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: #111827;
+}
+
+.stats-card-badge {
+    flex-shrink: 0;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f3f4f6;
+    color: #4b5563;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.stats-big-number {
+    font-size: clamp(3rem, 8vw, 5rem);
+    line-height: 1;
+    font-weight: 800;
+    color: #111827;
+    margin: 18px 0 12px;
+}
+
+.stats-card-text {
+    color: #6b7280;
+    max-width: 620px;
+}
+
+.stats-list {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    margin-top: 12px;
+}
+
+.stats-list-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.stats-list-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 18px;
+    color: #374151;
+}
+
+.stats-list-head-column {
+    align-items: flex-start;
+}
+
+.stats-list-head strong {
+    color: #111827;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.stats-offer-title {
+    display: block;
+    font-weight: 700;
+    color: #111827;
+    margin-bottom: 4px;
+}
+
+.stats-list-head small {
+    color: #6b7280;
+}
+
+.stats-progress {
+    height: 10px;
+    width: 100%;
+    border-radius: 999px;
+    background: #f3f4f6;
+    overflow: hidden;
+}
+
+.stats-progress span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #facc15 0%, #f59e0b 100%);
+}
+
+.stats-empty {
+    color: #6b7280;
+}
+
+.stats-extra-info {
+    color: #6b7280;
+    font-size: 0.85rem;
+}
+
+.carousel-button {
+    border: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 999px;
+    background: #ffffff;
+    color: #111827;
+    font-size: 1.8rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.12);
+    transition: transform 0.2s ease;
+}
+
+.carousel-button:hover {
+    transform: translateY(-1px);
+}
+
+.stats-indicators {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+.stats-indicator {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    border: 0;
+    background: #d1d5db;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.stats-indicator.is-active {
+    width: 30px;
+    background: #facc15;
+}
+
+@media (max-width: 768px) {
+    .stats-page {
+        padding: 32px 0 56px;
+    }
+
+    .stats-container {
+        width: min(100%, calc(100% - 24px));
+    }
+
+    .stats-card {
+        padding: 22px;
+        min-height: 390px;
+    }
+
+    .carousel-button {
+        display: none;
+    }
+}

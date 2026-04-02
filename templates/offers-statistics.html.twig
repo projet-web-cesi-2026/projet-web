@@ -1,0 +1,166 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Statistiques des offres - Help Me Stage{% endblock %}
+
+{% block stylesheets %}
+    <link rel="stylesheet" href="/assets/css/offers-statistics.css">
+{% endblock %}
+
+{% block body %}
+<main class="stats-page">
+    <div class="stats-container">
+        <header class="stats-header">
+            <span class="stats-kicker">SFx 11</span>
+            <h1>Statistiques des offres</h1>
+            <p>Un carrousel simple et épuré pour suivre les principaux indicateurs de la plateforme.</p>
+        </header>
+
+        <section class="stats-carousel-section" aria-label="Carrousel des statistiques">
+            <button class="carousel-button carousel-button-prev" type="button" id="stats-prev" aria-label="Carte précédente">‹</button>
+
+            <div class="stats-carousel" id="stats-carousel">
+                <article class="stats-card stats-card-highlight">
+                    <div class="stats-card-top">
+                        <span class="stats-card-label">Nombre total d'offres</span>
+                        <span class="stats-card-badge">Global</span>
+                    </div>
+
+                    <div class="stats-big-number">{{ total_offers }}</div>
+
+                    <p class="stats-card-text">
+                        Offres actuellement disponibles en base.
+                    </p>
+                </article>
+
+                <article class="stats-card">
+                    <div class="stats-card-top">
+                        <span class="stats-card-label">Moyenne de candidatures par offre</span>
+                        <span class="stats-card-badge">Candidatures</span>
+                    </div>
+
+                    <div class="stats-big-number">{{ average_applications_per_offer }}</div>
+
+                    <p class="stats-card-text">
+                        Calculée sur l'ensemble des offres, y compris celles qui n'ont encore reçu aucune candidature.
+                    </p>
+                </article>
+
+                <article class="stats-card stats-card-wide-data">
+                    <div class="stats-card-top">
+                        <span class="stats-card-label">Répartition des offres par durée de stage</span>
+                        <span class="stats-card-badge">Durée</span>
+                    </div>
+
+                    <div class="stats-list">
+                        {% for stat in offers_by_duration %}
+                            {% set count = stat.total|default(0) %}
+                            {% set percentage = total_offers > 0 ? ((count / total_offers) * 100) : 0 %}
+
+                            <div class="stats-list-row">
+                                <div class="stats-list-head">
+                                    <span>{{ stat.duree_semaines }} semaine{% if stat.duree_semaines > 1 %}s{% endif %}</span>
+                                    <strong>{{ percentage|round(1, 'common') }} %</strong>
+                                </div>
+                                <div class="stats-progress">
+                                    <span style="width: {{ percentage }}%;"></span>
+                                </div>
+                                <small class="stats-extra-info">{{ count }} offre{% if count > 1 %}s{% endif %}</small>
+                            </div>
+                        {% else %}
+                            <p class="stats-empty">Aucune donnée disponible.</p>
+                        {% endfor %}
+                    </div>
+                </article>
+
+                <article class="stats-card stats-card-wide-data">
+                    <div class="stats-card-top">
+                        <span class="stats-card-label">Top des offres les plus ajoutées en wishlist</span>
+                        <span class="stats-card-badge">Wishlist</span>
+                    </div>
+
+                    <div class="stats-list">
+                        {% for stat in top_wishlist_offers %}
+                            {% set count = stat.wishlist_count|default(0) %}
+                            {% set width = max_wishlist_count > 0 ? ((count / max_wishlist_count) * 100) : 0 %}
+
+                            <div class="stats-list-row">
+                                <div class="stats-list-head stats-list-head-column">
+                                    <div>
+                                        <span class="stats-offer-title">{{ stat.titre }}</span>
+                                        <small>{{ stat.entreprise }}</small>
+                                    </div>
+                                    <strong>{{ count }}</strong>
+                                </div>
+                                <div class="stats-progress">
+                                    <span style="width: {{ width }}%;"></span>
+                                </div>
+                            </div>
+                        {% else %}
+                            <p class="stats-empty">Aucune offre n'a encore été ajoutée en wishlist.</p>
+                        {% endfor %}
+                    </div>
+                </article>
+            </div>
+
+            <button class="carousel-button carousel-button-next" type="button" id="stats-next" aria-label="Carte suivante">›</button>
+        </section>
+
+        <div class="stats-indicators" id="stats-indicators" aria-hidden="true"></div>
+    </div>
+</main>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+(function () {
+    const carousel = document.getElementById('stats-carousel');
+    const prevButton = document.getElementById('stats-prev');
+    const nextButton = document.getElementById('stats-next');
+    const indicators = document.getElementById('stats-indicators');
+
+    if (!carousel || !prevButton || !nextButton || !indicators) {
+        return;
+    }
+
+    const cards = Array.from(carousel.querySelectorAll('.stats-card'));
+    if (cards.length === 0) {
+        return;
+    }
+
+    cards.forEach((_, index) => {
+        const dot = document.createElement('button');
+        dot.type = 'button';
+        dot.className = 'stats-indicator';
+        dot.setAttribute('aria-label', 'Aller à la carte ' + (index + 1));
+        dot.addEventListener('click', function () {
+            carousel.scrollTo({
+                left: carousel.clientWidth * index,
+                behavior: 'smooth'
+            });
+        });
+        indicators.appendChild(dot);
+    });
+
+    const dots = Array.from(indicators.querySelectorAll('.stats-indicator'));
+
+    function updateDots() {
+        const index = Math.round(carousel.scrollLeft / carousel.clientWidth);
+        dots.forEach((dot, dotIndex) => {
+            dot.classList.toggle('is-active', dotIndex === index);
+        });
+    }
+
+    prevButton.addEventListener('click', function () {
+        carousel.scrollBy({ left: -carousel.clientWidth, behavior: 'smooth' });
+    });
+
+    nextButton.addEventListener('click', function () {
+        carousel.scrollBy({ left: carousel.clientWidth, behavior: 'smooth' });
+    });
+
+    carousel.addEventListener('scroll', updateDots, { passive: true });
+    window.addEventListener('resize', updateDots);
+    updateDots();
+})();
+</script>
+{% endblock %}
