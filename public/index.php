@@ -58,6 +58,18 @@ if (!isset($_SESSION['_initiated'])) {
     $_SESSION['_initiated'] = time();
 }
 
+// Déconnexion automatique après 30 minutes d'inactivité
+$sessionTimeout = 30 * 60;
+if (isset($_SESSION['user'])) {
+    if (isset($_SESSION['_last_activity']) && (time() - $_SESSION['_last_activity']) > $sessionTimeout) {
+        session_unset();
+        session_destroy();
+        header('Location: /connexion?raison=expiration');
+        exit;
+    }
+    $_SESSION['_last_activity'] = time();
+}
+
 header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
