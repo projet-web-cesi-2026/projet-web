@@ -62,6 +62,10 @@ header('X-Frame-Options: SAMEORIGIN');
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header("Permissions-Policy: geolocation=(), microphone=(), camera=()");
+header("Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; frame-ancestors 'none'");
+if ($https) {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
 
 $loader = new FilesystemLoader(__DIR__ . '/../templates');
 
