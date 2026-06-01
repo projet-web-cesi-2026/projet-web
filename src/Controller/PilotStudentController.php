@@ -292,6 +292,9 @@ class PilotStudentController
         try {
             $this->studentRepository->deleteStudent($studentId);
         } catch (\Throwable $e) {
+            error_log('[PilotStudentController::delete] Erreur suppression étudiant #' . $studentId . ' : ' . $e->getMessage());
+            header('Location: /pilot-etudiants?error=suppression_echouee');
+            exit;
         }
 
         header('Location: /pilot-etudiants');

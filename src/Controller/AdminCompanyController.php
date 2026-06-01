@@ -58,7 +58,7 @@ class AdminCompanyController
     {
         if (
             !isset($_SESSION['user'])
-            || !in_array($_SESSION['user']['role'] ?? null, ['administrateur', 'pilote'], true)
+            || ($_SESSION['user']['role'] ?? null) !== 'administrateur'
         ) {
             header('Location: /connexion');
             exit;
@@ -230,7 +230,7 @@ class AdminCompanyController
     {
         if (
             !isset($_SESSION['user'])
-            || !in_array($_SESSION['user']['role'] ?? null, ['administrateur', 'pilote'], true)
+            || ($_SESSION['user']['role'] ?? null) !== 'administrateur'
         ) {
             header('Location: /connexion');
             exit;
